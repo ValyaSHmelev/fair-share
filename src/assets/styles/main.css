@@ -1,0 +1,94 @@
+:root {
+  --fs-max-width: 1100px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family:
+    'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: var(--p-content-background, #0b0e14);
+  color: var(--p-text-color, #e6e8ee);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.fs-container {
+  width: 100%;
+  max-width: var(--fs-max-width);
+  margin: 0 auto;
+  padding: 1.25rem;
+}
+
+.fs-page {
+  flex: 1;
+}
+
+.fs-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.fs-row-wrap {
+  flex-wrap: wrap;
+}
+
+.fs-spacer {
+  flex: 1;
+}
+
+.fs-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.fs-muted {
+  color: var(--p-text-muted-color, #9aa1b1);
+}
+
+.fs-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.fs-section-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.fs-table-scroll {
+  overflow-x: auto;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .fs-container {
+    padding: 0.875rem;
+  }
+  .fs-title {
+    font-size: 1.25rem;
+  }
+}
