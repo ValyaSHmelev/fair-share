@@ -17,6 +17,14 @@ const event = computed(() => store.getEventById(props.id))
 const currency = computed(() => event.value?.currency ?? 'RUB')
 const report = computed(() => (event.value ? buildReport(event.value) : null))
 
+const nameById = computed(
+  () => new Map((event.value?.participants ?? []).map((p) => [p.id, p.name])),
+)
+
+function participantName(id: string): string {
+  return nameById.value.get(id) ?? '?'
+}
+
 function money(value: number) {
   return formatMoney(value, currency.value)
 }
@@ -105,6 +113,62 @@ function exportCsv() {
         </tfoot>
       </table>
     </div>
+
+    <!-- Взаиморасчёты -->
+    <section v-if="report.rows.length" class="settlements">
+      <h3 class="fs-section-title">Взаиморасчёты</h3>
+
+      <Message
+        v-if="report.expensesWithoutPayer.length"
+        severity="warn"
+        :closable="false"
+      >
+        Не учтены в переводах (не указан плательщик):
+        {{ report.expensesWithoutPayer.map((e) => e.title).join(', ') }}
+      </Message>
+
+      <!-- Балансы -->
+      <div class="fs-table-scroll">
+        <table class="report-table">
+          <thead>
+            <tr>
+              <th class="sticky-col">Участник</th>
+              <th class="num">Заплатил</th>
+              <th class="num">Доля</th>
+              <th class="num">Баланс</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="b in report.balances" :key="b.participantId">
+              <td class="sticky-col">{{ participantName(b.participantId) }}</td>
+              <td class="num">{{ money(b.paid) }}</td>
+              <td class="num">{{ money(b.owed) }}</td>
+              <td
+                class="num balance"
+                :class="{ positive: b.balance > 0, negative: b.balance < 0 }"
+              >
+                {{ b.balance > 0 ? '+' : '' }}{{ money(b.balance) }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Кто кому переводит -->
+      <h4 class="transfers-title">Кто кому переводит</h4>
+      <p v-if="!report.settlements.length" class="fs-muted all-settled">
+        <i class="pi pi-check-circle" /> Все рассчитались — переводы не нужны.
+      </p>
+      <ul v-else class="transfer-list">
+        <li v-for="(s, i) in report.settlements" :key="i" class="transfer-row">
+          <span class="transfer-from">{{ participantName(s.fromId) }}</span>
+          <i class="pi pi-arrow-right transfer-arrow" />
+          <span class="transfer-to">{{ participantName(s.toId) }}</span>
+          <div class="fs-spacer" />
+          <span class="transfer-amount">{{ money(s.amount) }}</span>
+        </li>
+      </ul>
+    </section>
 
     <!-- Итоги по группам -->
     <section v-if="report.groupTotals.length">
@@ -211,6 +275,53 @@ function exportCsv() {
   font-size: 0.82rem;
 }
 .group-total {
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+.balance.positive {
+  color: var(--p-green-400, #22c55e);
+  font-weight: 700;
+}
+.balance.negative {
+  color: var(--p-red-400, #ef4444);
+  font-weight: 700;
+}
+.transfers-title {
+  margin: 1rem 0 0.5rem;
+  font-size: 1rem;
+}
+.all-settled {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.transfer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.transfer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.6rem;
+  background: var(--p-content-background);
+}
+.transfer-from {
+  font-weight: 600;
+}
+.transfer-to {
+  font-weight: 600;
+}
+.transfer-arrow {
+  color: var(--p-primary-color);
+}
+.transfer-amount {
   font-weight: 800;
   font-size: 1.05rem;
 }

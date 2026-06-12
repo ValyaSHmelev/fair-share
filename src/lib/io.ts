@@ -83,6 +83,13 @@ export function parseImportFile(raw: string): ParsedImport {
   if (!valid) {
     return { ok: false, error: 'Некоторые мероприятия имеют неверный формат.' }
   }
+  // Нормализация под актуальную схему: legacy-позиции без payerId получают null.
+  for (const ev of events) {
+    if (!Array.isArray(ev.expenses)) continue
+    for (const ex of ev.expenses) {
+      if (ex.payerId === undefined) ex.payerId = null
+    }
+  }
   return {
     ok: true,
     state: {
@@ -125,6 +132,23 @@ export function exportReportToCsv(event: FairEvent): void {
   const currency = CURRENCIES[event.currency]?.label ?? event.currency
   lines.push('')
   lines.push(csvEscape(`Валюта: ${currency}`))
+
+  // Блок взаиморасчётов (кто кому переводит, минимум транзакций).
+  const nameById = new Map(report.participants.map((p) => [p.id, p.name]))
+  if (report.settlements.length) {
+    lines.push('')
+    lines.push(csvEscape('Взаиморасчёты'))
+    lines.push(['Кто', 'Кому', 'Сумма'].map(csvEscape).join(','))
+    for (const s of report.settlements) {
+      lines.push(
+        [
+          csvEscape(nameById.get(s.fromId) ?? '?'),
+          csvEscape(nameById.get(s.toId) ?? '?'),
+          String(s.amount),
+        ].join(','),
+      )
+    }
+  }
 
   const safeName = event.name.replace(/[^\p{L}\p{N}_-]+/gu, '_').slice(0, 60) || 'event'
   triggerDownload('\ufeff' + lines.join('\n'), `fairshare-${safeName}.csv`, 'text/csv;charset=utf-8')

@@ -32,8 +32,15 @@ export interface Expense {
   id: ID
   title: string
   price: number
+  payerId: ID | null
   participantIds: ID[]
   createdAt: string
+}
+
+export interface Settlement {
+  fromId: ID
+  toId: ID
+  amount: number
 }
 
 export interface FairEvent {

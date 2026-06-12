@@ -1,4 +1,4 @@
-import type { Expense, FairEvent, Group, ID, Participant } from '@/types/models'
+import type { Expense, FairEvent, Group, ID, Participant, Settlement } from '@/types/models'
 
 /**
  * Делит стоимость позиции поровну между n участниками с округлением до целого рубля.
@@ -77,6 +77,76 @@ export function sumOfAllShares(event: FairEvent): number {
   return sum
 }
 
+export interface ParticipantBalance {
+  participantId: ID
+  /** Сколько участник заплатил (по учтённым позициям, где он плательщик). */
+  paid: number
+  /** Сколько участник должен (его доля по учтённым позициям). */
+  owed: number
+  /** Сальдо: paid − owed. >0 — кредитор, <0 — дебитор. */
+  balance: number
+}
+
+/**
+ * Балансы участников по разделу 6.6.
+ * Учитываются только позиции с participantIds.length > 0 и существующим payerId.
+ * Инвариант: сумма всех balance строго равна 0.
+ */
+export function participantBalances(event: FairEvent): Map<ID, ParticipantBalance> {
+  const map = new Map<ID, ParticipantBalance>()
+  for (const p of event.participants) {
+    map.set(p.id, { participantId: p.id, paid: 0, owed: 0, balance: 0 })
+  }
+  for (const expense of event.expenses) {
+    if (expense.participantIds.length === 0) continue
+    if (!expense.payerId) continue
+    const payer = map.get(expense.payerId)
+    if (!payer) continue // плательщик не из участников мероприятия — позицию не учитываем
+    payer.paid += Math.round(expense.price)
+    const shares = expenseShares(expense)
+    for (const [pid, value] of shares) {
+      const b = map.get(pid)
+      if (b) b.owed += value
+    }
+  }
+  for (const b of map.values()) b.balance = b.paid - b.owed
+  return map
+}
+
+/**
+ * Оптимальная схема переводов (раздел 6.7), жадный алгоритм сведения долгов.
+ * Возвращает список переводов «дебитор → кредитор» с минимальным числом транзакций.
+ */
+export function minimizeTransfers(balances: Map<ID, number>): Settlement[] {
+  const creditors: Array<{ id: ID; amount: number }> = []
+  const debtors: Array<{ id: ID; amount: number }> = []
+  for (const [id, balance] of balances) {
+    if (balance > 0) creditors.push({ id, amount: balance })
+    else if (balance < 0) debtors.push({ id, amount: -balance })
+  }
+  const byAmountThenId = (a: { id: ID; amount: number }, b: { id: ID; amount: number }) =>
+    b.amount - a.amount || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  creditors.sort(byAmountThenId)
+  debtors.sort(byAmountThenId)
+
+  const settlements: Settlement[] = []
+  let i = 0
+  let j = 0
+  while (i < debtors.length && j < creditors.length) {
+    const debtor = debtors[i]
+    const creditor = creditors[j]
+    const amount = Math.min(debtor.amount, creditor.amount)
+    if (amount > 0) {
+      settlements.push({ fromId: debtor.id, toId: creditor.id, amount })
+      debtor.amount -= amount
+      creditor.amount -= amount
+    }
+    if (debtor.amount === 0) i++
+    if (creditor.amount === 0) j++
+  }
+  return settlements
+}
+
 export interface ReportRow {
   expense: Expense
   /** Доли по участникам в порядке participantsOrder; undefined — если не участвует. */
@@ -97,6 +167,12 @@ export interface EventReport {
   groupTotals: GroupTotal[]
   /** Позиции без участников (предупреждение). */
   expensesWithoutParticipants: Expense[]
+  /** Балансы участников в порядке participants (раздел 6.6). */
+  balances: ParticipantBalance[]
+  /** Оптимальная схема переводов (раздел 6.7). */
+  settlements: Settlement[]
+  /** Позиции с участниками, но без указанного плательщика (не входят в переводы). */
+  expensesWithoutPayer: Expense[]
 }
 
 /** Строит полную матрицу отчёта в формате Excel-таблицы. */
@@ -108,11 +184,14 @@ export function buildReport(event: FairEvent): EventReport {
   const rows: ReportRow[] = []
   const expensesWithoutParticipants: Expense[] = []
 
+  const expensesWithoutPayer: Expense[] = []
+
   for (const expense of event.expenses) {
     if (expense.participantIds.length === 0) {
       expensesWithoutParticipants.push(expense)
       continue
     }
+    if (!expense.payerId) expensesWithoutPayer.push(expense)
     const shareMap = expenseShares(expense)
     const shares = order.map((id) => shareMap.get(id))
     rows.push({ expense, shares })
@@ -126,6 +205,13 @@ export function buildReport(event: FairEvent): EventReport {
     return { group, members, total }
   })
 
+  const balancesMap = participantBalances(event)
+  const balances = order.map(
+    (id) => balancesMap.get(id) ?? { participantId: id, paid: 0, owed: 0, balance: 0 },
+  )
+  const balanceById = new Map<ID, number>(balances.map((b) => [b.participantId, b.balance]))
+  const settlements = minimizeTransfers(balanceById)
+
   return {
     participants,
     rows,
@@ -133,5 +219,8 @@ export function buildReport(event: FairEvent): EventReport {
     eventTotal: eventTotal(event),
     groupTotals,
     expensesWithoutParticipants,
+    balances,
+    settlements,
+    expensesWithoutPayer,
   }
 }

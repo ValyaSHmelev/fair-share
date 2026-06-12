@@ -6,7 +6,7 @@ import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
-import Tag from 'primevue/tag'
+import Select from 'primevue/select'
 import Message from 'primevue/message'
 import EmptyState from '@/components/EmptyState.vue'
 import ParticipantPicker from '@/components/ParticipantPicker.vue'
@@ -27,11 +27,21 @@ const symbol = computed(() => CURRENCIES[currency.value].symbol)
 
 const dialogVisible = ref(false)
 const editingId = ref<string | null>(null)
-const form = reactive<{ title: string; price: number | null; participantIds: string[] }>({
+const form = reactive<{
+  title: string
+  price: number | null
+  payerId: string | null
+  participantIds: string[]
+}>({
   title: '',
   price: null,
+  payerId: null,
   participantIds: [],
 })
+
+const payerOptions = computed(() =>
+  (event.value?.participants ?? []).map((p) => ({ label: p.name, value: p.id })),
+)
 
 const previewShare = computed(() => {
   if (!form.price || form.participantIds.length === 0) return 0
@@ -41,6 +51,11 @@ const previewShare = computed(() => {
 function participantNames(ids: string[]): string[] {
   const map = new Map(event.value?.participants.map((p) => [p.id, p.name]))
   return ids.map((id) => map.get(id) ?? '?')
+}
+
+function payerName(id: string | null): string {
+  if (!id) return ''
+  return event.value?.participants.find((p) => p.id === id)?.name ?? '?'
 }
 
 function openCreate() {
@@ -57,6 +72,7 @@ function openCreate() {
   form.title = ''
   form.price = null
   form.participantIds = event.value.participants.map((p) => p.id)
+  form.payerId = event.value.participants[0]?.id ?? null
   dialogVisible.value = true
 }
 
@@ -64,6 +80,7 @@ function openEdit(expense: Expense) {
   editingId.value = expense.id
   form.title = expense.title
   form.price = expense.price
+  form.payerId = expense.payerId
   form.participantIds = [...expense.participantIds]
   dialogVisible.value = true
 }
@@ -78,7 +95,16 @@ function submit() {
     toast.add({ severity: 'warn', summary: 'Введите корректную цену', life: 2500 })
     return
   }
-  const payload = { title, price: form.price, participantIds: form.participantIds }
+  if (!form.payerId) {
+    toast.add({ severity: 'warn', summary: 'Укажите плательщика', life: 2500 })
+    return
+  }
+  const payload = {
+    title,
+    price: form.price,
+    payerId: form.payerId,
+    participantIds: form.participantIds,
+  }
   if (editingId.value) {
     store.updateExpense(props.id, editingId.value, payload)
   } else {
@@ -130,6 +156,11 @@ function sharePerPerson(expense: Expense): number {
         <div class="expense-main">
           <div class="expense-title">{{ ex.title }}</div>
           <div class="expense-sub fs-muted">
+            <span v-if="ex.payerId" class="payer-line">
+              <i class="pi pi-wallet" /> {{ payerName(ex.payerId) }}
+            </span>
+            <span v-else class="warn-text"><i class="pi pi-exclamation-triangle" /> не указан плательщик</span>
+            <span class="sub-sep">·</span>
             <span v-if="ex.participantIds.length">
               {{ participantNames(ex.participantIds).join(', ') }}
             </span>
@@ -193,6 +224,18 @@ function sharePerPerson(expense: Expense): number {
           />
         </div>
         <div class="field">
+          <label for="ex-payer">Кто оплатил</label>
+          <Select
+            id="ex-payer"
+            v-model="form.payerId"
+            :options="payerOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Выберите плательщика"
+            fluid
+          />
+        </div>
+        <div class="field">
           <label>На кого делить</label>
           <ParticipantPicker
             :participants="event.participants"
@@ -251,6 +294,14 @@ function sharePerPerson(expense: Expense): number {
 }
 .warn-text {
   color: var(--p-orange-400, #f59e0b);
+}
+.payer-line {
+  font-weight: 600;
+  color: var(--p-text-color);
+}
+.sub-sep {
+  margin: 0 0.35rem;
+  opacity: 0.5;
 }
 .expense-figures {
   text-align: right;

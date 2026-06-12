@@ -109,6 +109,7 @@ export const useEventsStore = defineStore('events', () => {
     clone.expenses.forEach((ex) => {
       ex.id = newId()
       ex.participantIds = ex.participantIds.map((pid) => pMap.get(pid) ?? pid).filter(Boolean)
+      ex.payerId = ex.payerId ? (pMap.get(ex.payerId) ?? null) : null
     })
     events.value.push(clone)
     persist()
@@ -140,6 +141,7 @@ export const useEventsStore = defineStore('events', () => {
     event.participants = event.participants.filter((p) => p.id !== participantId)
     for (const ex of event.expenses) {
       ex.participantIds = ex.participantIds.filter((id) => id !== participantId)
+      if (ex.payerId === participantId) ex.payerId = null
     }
     touch(event)
   }
@@ -185,7 +187,7 @@ export const useEventsStore = defineStore('events', () => {
   // --- Позиции ---
   function addExpense(
     eventId: ID,
-    payload: { title: string; price: number; participantIds: ID[] },
+    payload: { title: string; price: number; payerId: ID | null; participantIds: ID[] },
   ): Expense | undefined {
     const event = getEventById(eventId)
     if (!event) return undefined
@@ -193,6 +195,7 @@ export const useEventsStore = defineStore('events', () => {
       id: newId(),
       title: payload.title.trim(),
       price: payload.price,
+      payerId: payload.payerId,
       participantIds: [...payload.participantIds],
       createdAt: nowIso(),
     }
@@ -204,13 +207,14 @@ export const useEventsStore = defineStore('events', () => {
   function updateExpense(
     eventId: ID,
     expenseId: ID,
-    patch: Partial<Pick<Expense, 'title' | 'price' | 'participantIds'>>,
+    patch: Partial<Pick<Expense, 'title' | 'price' | 'payerId' | 'participantIds'>>,
   ): void {
     const event = getEventById(eventId)
     const ex = event?.expenses.find((x) => x.id === expenseId)
     if (!event || !ex) return
     if (patch.title !== undefined) ex.title = patch.title.trim()
     if (patch.price !== undefined) ex.price = patch.price
+    if (patch.payerId !== undefined) ex.payerId = patch.payerId
     if (patch.participantIds !== undefined) ex.participantIds = [...patch.participantIds]
     touch(event)
   }
