@@ -249,6 +249,13 @@ export const useEventsStore = defineStore('events', () => {
     persist()
   }
 
+  function importSingleEvent(event: FairEvent): void {
+    const existingIds = new Set(events.value.map((e) => e.id))
+    if (existingIds.has(event.id)) event = { ...event, id: newId() }
+    events.value.push(event)
+    persist()
+  }
+
   function clearAll(): void {
     events.value = []
     schemaVersion.value = SCHEMA_VERSION
@@ -277,6 +284,7 @@ export const useEventsStore = defineStore('events', () => {
     exportState,
     exportPayload,
     importState,
+    importSingleEvent,
     clearAll,
   }
 })

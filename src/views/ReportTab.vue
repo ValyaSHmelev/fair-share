@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
+import { buildShareUrl } from '@/lib/share'
 import Message from 'primevue/message'
 import EmptyState from '@/components/EmptyState.vue'
 import { useEventsStore } from '@/stores/events'
@@ -34,6 +35,17 @@ function exportCsv() {
   exportReportToCsv(event.value)
   toast.add({ severity: 'success', summary: 'Отчёт выгружен в CSV', life: 2000 })
 }
+
+async function share() {
+  if (!event.value) return
+  try {
+    const url = await buildShareUrl(event.value)
+    await navigator.clipboard.writeText(url)
+    toast.add({ severity: 'success', summary: 'Ссылка скопирована', detail: 'Отправьте её участникам', life: 3000 })
+  } catch {
+    toast.add({ severity: 'error', summary: 'Не удалось скопировать ссылку', life: 3000 })
+  }
+}
 </script>
 
 <template>
@@ -41,6 +53,12 @@ function exportCsv() {
     <div class="fs-row fs-row-wrap">
       <h2 class="fs-section-title" style="margin: 0">Отчёт</h2>
       <div class="fs-spacer" />
+      <Button
+        label="Поделиться"
+        icon="pi pi-share-alt"
+        severity="secondary"
+        @click="share"
+      />
       <Button
         label="Экспорт в CSV"
         icon="pi pi-download"

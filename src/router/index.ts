@@ -38,6 +38,11 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/share',
+    name: 'shared-report',
+    component: () => import('@/views/SharedReportView.vue'),
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/NotFoundView.vue'),

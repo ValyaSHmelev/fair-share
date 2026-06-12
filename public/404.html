@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>FairShare</title>
+    <script>
+      // SPA redirect для GitHub Pages history mode
+      // Сохраняем путь в sessionStorage и редиректим на корень
+      var path = window.location.pathname.replace('/fair-share', '') || '/'
+      var search = window.location.search
+      var hash = window.location.hash
+      sessionStorage.setItem('spa_redirect', path + search + hash)
+      window.location.replace('/fair-share/')
+    </script>
+  </head>
+  <body></body>
+</html>
