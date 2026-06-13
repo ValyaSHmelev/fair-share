@@ -57,6 +57,6 @@ export async function decodeEvent(encoded: string): Promise<FairEvent> {
 /** Строит полный URL для страницы /share с закодированным мероприятием. */
 export async function buildShareUrl(event: FairEvent): Promise<string> {
   const encoded = await encodeEvent(event)
-  const base = `${window.location.origin}/share`
+  const base = `${window.location.origin}${import.meta.env.BASE_URL}share`
   return `${base}#${encoded}`
 }
