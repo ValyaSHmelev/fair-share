@@ -8,7 +8,6 @@ import EmptyState from '@/components/EmptyState.vue'
 import { useEventsStore } from '@/stores/events'
 import { buildReport } from '@/lib/calc'
 import { formatMoney } from '@/lib/format'
-import { exportReportToCsv } from '@/lib/io'
 
 const props = defineProps<{ id: string }>()
 const store = useEventsStore()
@@ -28,12 +27,6 @@ function participantName(id: string): string {
 
 function money(value: number) {
   return formatMoney(value, currency.value)
-}
-
-function exportCsv() {
-  if (!event.value) return
-  exportReportToCsv(event.value)
-  toast.add({ severity: 'success', summary: 'Отчёт выгружен в CSV', life: 2000 })
 }
 
 async function share() {
@@ -58,13 +51,6 @@ async function share() {
         icon="pi pi-share-alt"
         severity="secondary"
         @click="share"
-      />
-      <Button
-        label="Экспорт в CSV"
-        icon="pi pi-download"
-        severity="secondary"
-        :disabled="!report.rows.length"
-        @click="exportCsv"
       />
     </div>
 
