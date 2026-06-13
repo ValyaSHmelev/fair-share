@@ -8,6 +8,7 @@ import Tooltip from 'primevue/tooltip'
 
 import App from './App.vue'
 import { router } from './router'
+import { registerSW } from 'virtual:pwa-register'
 
 import 'primeicons/primeicons.css'
 import './assets/styles/main.css'
@@ -30,3 +31,5 @@ app.use(ConfirmationService)
 app.directive('tooltip', Tooltip)
 
 app.mount('#app')
+
+registerSW({ immediate: true })
