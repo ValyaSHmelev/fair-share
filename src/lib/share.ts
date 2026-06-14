@@ -51,6 +51,12 @@ export async function decodeEvent(encoded: string): Promise<FairEvent> {
   if (!event || typeof event !== 'object' || !event.id || !event.name || !Array.isArray(event.expenses)) {
     throw new Error('Невалидные данные мероприятия')
   }
+  // Нормализация под актуальную схему для ссылок из старых версий.
+  if (Array.isArray(event.participants)) {
+    for (const p of event.participants) {
+      if (p && p.paidById === undefined) p.paidById = null
+    }
+  }
   return event as FairEvent
 }
 

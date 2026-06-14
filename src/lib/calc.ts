@@ -1,4 +1,4 @@
-import type { Expense, FairEvent, Group, ID, Participant, Settlement } from '@/types/models'
+import type { Expense, FairEvent, ID, Participant, Settlement } from '@/types/models'
 
 /**
  * Делит стоимость позиции поровну между n участниками с округлением до целого рубля.
@@ -50,16 +50,6 @@ export function totalForParticipant(event: FairEvent, participantId: ID): number
   return participantTotals(event).get(participantId) ?? 0
 }
 
-/** Итог по группе — сумма итогов её участников. */
-export function totalForGroup(event: FairEvent, groupId: ID): number {
-  const totals = participantTotals(event)
-  let sum = 0
-  for (const p of event.participants) {
-    if (p.groupId === groupId) sum += totals.get(p.id) ?? 0
-  }
-  return sum
-}
-
 /** Итог по мероприятию — сумма округлённых цен позиций, у которых есть участники. */
 export function eventTotal(event: FairEvent): number {
   let sum = 0
@@ -75,6 +65,25 @@ export function sumOfAllShares(event: FairEvent): number {
   let sum = 0
   for (const value of participantTotals(event).values()) sum += value
   return sum
+}
+
+/**
+ * Возвращает id конечного участника, который оплачивает долю `participantId`
+ * во взаиморасчётах, разрешая цепочку `paidById` (например, парень платит за пару).
+ * Циклы и ссылки на несуществующих участников трактуются как «Сам» —
+ * возвращается последний валидный участник в цепочке.
+ */
+export function resolveCoverer(participants: Participant[], participantId: ID): ID {
+  const byId = new Map(participants.map((p) => [p.id, p]))
+  const seen = new Set<ID>()
+  let current = participantId
+  while (true) {
+    const p = byId.get(current)
+    if (!p || !p.paidById || !byId.has(p.paidById)) return current
+    if (seen.has(current)) return current // защита от цикла
+    seen.add(current)
+    current = p.paidById
+  }
 }
 
 export interface ParticipantBalance {
@@ -105,7 +114,10 @@ export function participantBalances(event: FairEvent): Map<ID, ParticipantBalanc
     payer.paid += Math.round(expense.price)
     const shares = expenseShares(expense)
     for (const [pid, value] of shares) {
-      const b = map.get(pid)
+      // Долю участника во взаиморасчётах несёт тот, кто за него платит
+      // (например, парень за свою половинку). По умолчанию — он сам.
+      const covererId = resolveCoverer(event.participants, pid)
+      const b = map.get(covererId)
       if (b) b.owed += value
     }
   }
@@ -153,18 +165,11 @@ export interface ReportRow {
   shares: Array<number | undefined>
 }
 
-export interface GroupTotal {
-  group: Group
-  members: Participant[]
-  total: number
-}
-
 export interface EventReport {
   participants: Participant[]
   rows: ReportRow[]
   participantTotals: number[]
   eventTotal: number
-  groupTotals: GroupTotal[]
   /** Позиции без участников (предупреждение). */
   expensesWithoutParticipants: Expense[]
   /** Балансы участников в порядке participants (раздел 6.6). */
@@ -199,12 +204,6 @@ export function buildReport(event: FairEvent): EventReport {
 
   const participantTotalsArr = order.map((id) => totalsMap.get(id) ?? 0)
 
-  const groupTotals: GroupTotal[] = event.groups.map((group) => {
-    const members = participants.filter((p) => p.groupId === group.id)
-    const total = members.reduce((acc, p) => acc + (totalsMap.get(p.id) ?? 0), 0)
-    return { group, members, total }
-  })
-
   const balancesMap = participantBalances(event)
   const balances = order.map(
     (id) => balancesMap.get(id) ?? { participantId: id, paid: 0, owed: 0, balance: 0 },
@@ -217,7 +216,6 @@ export function buildReport(event: FairEvent): EventReport {
     rows,
     participantTotals: participantTotalsArr,
     eventTotal: eventTotal(event),
-    groupTotals,
     expensesWithoutParticipants,
     balances,
     settlements,

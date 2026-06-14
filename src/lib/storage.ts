@@ -12,9 +12,15 @@ export function emptyState(): PersistedState {
  */
 export function migrateState(state: PersistedState): PersistedState {
   for (const event of state.events) {
-    if (!Array.isArray(event.expenses)) continue
-    for (const expense of event.expenses) {
-      if (expense.payerId === undefined) expense.payerId = null
+    if (Array.isArray(event.expenses)) {
+      for (const expense of event.expenses) {
+        if (expense.payerId === undefined) expense.payerId = null
+      }
+    }
+    if (Array.isArray(event.participants)) {
+      for (const participant of event.participants) {
+        if (participant.paidById === undefined) participant.paidById = null
+      }
     }
   }
   return state

@@ -19,13 +19,13 @@ export const CURRENCIES: Record<CurrencyCode, CurrencyInfo> = {
 export interface Participant {
   id: ID
   name: string
-  groupId: ID | null
-}
-
-export interface Group {
-  id: ID
-  name: string
-  color?: string
+  /**
+   * Кто оплачивает долю этого участника во взаиморасчётах.
+   * null — участник платит сам за себя («Сам»). Иначе — id другого участника
+   * (например, парень платит за свою половинку). Цепочки разрешаются до конечного
+   * плательщика; циклы и висячие ссылки трактуются как «Сам».
+   */
+  paidById: ID | null
 }
 
 export interface Expense {
@@ -49,7 +49,6 @@ export interface FairEvent {
   date: string | null
   currency: CurrencyCode
   participants: Participant[]
-  groups: Group[]
   expenses: Expense[]
   createdAt: string
   updatedAt: string

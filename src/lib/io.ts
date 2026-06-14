@@ -83,11 +83,18 @@ export function parseImportFile(raw: string): ParsedImport {
   if (!valid) {
     return { ok: false, error: 'Некоторые мероприятия имеют неверный формат.' }
   }
-  // Нормализация под актуальную схему: legacy-позиции без payerId получают null.
+  // Нормализация под актуальную схему: legacy-позиции без payerId получают null,
+  // участники без paidById — null («Сам»).
   for (const ev of events) {
-    if (!Array.isArray(ev.expenses)) continue
-    for (const ex of ev.expenses) {
-      if (ex.payerId === undefined) ex.payerId = null
+    if (Array.isArray(ev.expenses)) {
+      for (const ex of ev.expenses) {
+        if (ex.payerId === undefined) ex.payerId = null
+      }
+    }
+    if (Array.isArray(ev.participants)) {
+      for (const p of ev.participants) {
+        if (p.paidById === undefined) p.paidById = null
+      }
     }
   }
   return {

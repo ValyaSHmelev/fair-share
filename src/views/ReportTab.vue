@@ -174,21 +174,6 @@ async function share() {
       </ul>
     </section>
 
-    <!-- Итоги по группам -->
-    <section v-if="report.groupTotals.length">
-      <h3 class="fs-section-title">Итого по группам</h3>
-      <ul class="group-list">
-        <li v-for="gt in report.groupTotals" :key="gt.group.id" class="group-row">
-          <div class="group-info">
-            <span class="group-name">{{ gt.group.name }}</span>
-            <span class="fs-muted group-members">
-              {{ gt.members.map((m) => m.name).join(', ') || 'нет участников' }}
-            </span>
-          </div>
-          <span class="group-total">{{ money(gt.total) }}</span>
-        </li>
-      </ul>
-    </section>
   </div>
 </template>
 
@@ -248,39 +233,6 @@ async function share() {
 }
 .dash {
   opacity: 0.5;
-}
-.group-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-.group-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.7rem 0.85rem;
-  border: 1px solid var(--p-content-border-color);
-  border-radius: 0.6rem;
-  background: var(--p-content-background);
-}
-.group-info {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-}
-.group-name {
-  font-weight: 700;
-}
-.group-members {
-  font-size: 0.82rem;
-}
-.group-total {
-  font-weight: 800;
-  font-size: 1.05rem;
 }
 .balance.positive {
   color: var(--p-green-400, #22c55e);

@@ -17,24 +17,44 @@ const toast = useToast()
 
 const event = computed(() => store.getEventById(props.id))
 
-const newName = ref('')
-const newGroupName = ref('')
+// Сентинел для варианта «Сам»: PrimeVue Select при modelValue === null показывает
+// плейсхолдер, поэтому в UI используем ненулевое значение.
+const SELF = 'self'
 
-const groupOptions = computed(() => [
-  { label: 'Без группы', value: null },
-  ...(event.value?.groups.map((g) => ({ label: g.name, value: g.id })) ?? []),
+const newName = ref('')
+const newPaidById = ref<string>(SELF)
+
+// Варианты «кто платит» при добавлении нового участника — «Сам» + уже добавленные.
+const newPayerOptions = computed(() => [
+  { label: 'Сам', value: SELF },
+  ...(event.value?.participants.map((p) => ({ label: p.name, value: p.id })) ?? []),
 ])
 
-function groupName(groupId: string | null): string | null {
-  if (!groupId) return null
-  return event.value?.groups.find((g) => g.id === groupId)?.name ?? null
+// Варианты «кто платит» для существующего участника — «Сам» + все, кроме него самого.
+function payerOptions(participantId: string) {
+  return [
+    { label: 'Сам', value: SELF },
+    ...(event.value?.participants
+      .filter((p) => p.id !== participantId)
+      .map((p) => ({ label: p.name, value: p.id })) ?? []),
+  ]
+}
+
+function payerName(paidById: string | null): string | null {
+  if (!paidById) return null
+  return event.value?.participants.find((p) => p.id === paidById)?.name ?? null
+}
+
+function setPaidBy(participantId: string, value: string) {
+  store.setPaidBy(props.id, participantId, value === SELF ? null : value)
 }
 
 function addParticipant() {
   const name = newName.value.trim()
   if (!name) return
-  store.addParticipant(props.id, name)
+  store.addParticipant(props.id, name, newPaidById.value === SELF ? null : newPaidById.value)
   newName.value = ''
+  newPaidById.value = SELF
 }
 
 const editingId = ref<string | null>(null)
@@ -65,33 +85,6 @@ function removeParticipant(p: Participant) {
     },
   })
 }
-
-function addGroup() {
-  const name = newGroupName.value.trim()
-  if (!name) return
-  store.addGroup(props.id, name)
-  newGroupName.value = ''
-}
-
-function removeGroup(groupId: string, name: string) {
-  confirm.require({
-    header: 'Удалить группу?',
-    message: `Группа «${name}» будет удалена. Участники останутся, но без группы.`,
-    icon: 'pi pi-exclamation-triangle',
-    rejectLabel: 'Отмена',
-    acceptLabel: 'Удалить',
-    acceptClass: 'p-button-danger',
-    accept: () => store.removeGroup(props.id, groupId),
-  })
-}
-
-function setGroup(participantId: string, groupId: string | null) {
-  store.assignToGroup(props.id, participantId, groupId)
-}
-
-function membersCount(groupId: string): number {
-  return event.value?.participants.filter((p) => p.groupId === groupId).length ?? 0
-}
 </script>
 
 <template>
@@ -106,8 +99,20 @@ function membersCount(groupId: string): number {
           fluid
           @keyup.enter="addParticipant"
         />
+        <Select
+          v-model="newPaidById"
+          :options="newPayerOptions"
+          optionLabel="label"
+          optionValue="value"
+          class="payer-select"
+          v-tooltip.bottom="'Кто платит за этого участника'"
+        />
         <Button label="Добавить" icon="pi pi-plus" @click="addParticipant" />
       </div>
+      <p class="fs-muted payer-hint">
+        «Кто платит» — за кого этот участник переводит деньги. По умолчанию «Сам».
+        Удобно для пар: например, парень платит за свою половинку — это сократит число переводов.
+      </p>
 
       <EmptyState
         v-if="!event.participants.length"
@@ -132,19 +137,20 @@ function membersCount(groupId: string): number {
           <template v-else>
             <span class="item-name">{{ p.name }}</span>
             <Tag
-              v-if="groupName(p.groupId)"
-              :value="groupName(p.groupId)!"
-              severity="success"
+              v-if="payerName(p.paidById)"
+              :value="`платит ${payerName(p.paidById)}`"
+              icon="pi pi-wallet"
+              severity="info"
             />
             <div class="fs-spacer" />
             <Select
-              :modelValue="p.groupId"
-              :options="groupOptions"
+              :modelValue="p.paidById ?? SELF"
+              :options="payerOptions(p.id)"
               optionLabel="label"
               optionValue="value"
-              placeholder="Группа"
-              class="group-select"
-              @update:modelValue="(v: string | null) => setGroup(p.id, v)"
+              class="payer-select"
+              v-tooltip.bottom="'Кто платит за этого участника'"
+              @update:modelValue="(v: string) => setPaidBy(p.id, v)"
             />
             <Button
               icon="pi pi-pencil"
@@ -163,40 +169,6 @@ function membersCount(groupId: string): number {
               @click="removeParticipant(p)"
             />
           </template>
-        </li>
-      </ul>
-    </section>
-
-    <!-- Группы -->
-    <section>
-      <h2 class="fs-section-title">Группы (пары)</h2>
-      <p class="fs-muted group-hint">
-        Группы не меняют расчёт по людям — они показывают суммарный итог по паре/компании в отчёте.
-      </p>
-      <div class="add-row">
-        <InputText
-          v-model="newGroupName"
-          placeholder="Название группы, напр. «Валя и Маша»"
-          fluid
-          @keyup.enter="addGroup"
-        />
-        <Button label="Добавить" icon="pi pi-plus" severity="secondary" @click="addGroup" />
-      </div>
-
-      <p v-if="!event.groups.length" class="fs-muted">Групп пока нет.</p>
-      <ul v-else class="list">
-        <li v-for="g in event.groups" :key="g.id" class="list-item">
-          <span class="item-name">{{ g.name }}</span>
-          <Tag :value="`${membersCount(g.id)} уч.`" severity="secondary" />
-          <div class="fs-spacer" />
-          <Button
-            icon="pi pi-trash"
-            text
-            rounded
-            severity="danger"
-            v-tooltip.bottom="'Удалить группу'"
-            @click="removeGroup(g.id, g.name)"
-          />
         </li>
       </ul>
     </section>
@@ -232,15 +204,15 @@ function membersCount(groupId: string): number {
 .item-name {
   font-weight: 600;
 }
-.group-select {
+.payer-select {
   min-width: 9rem;
 }
-.group-hint {
+.payer-hint {
   margin: 0 0 0.75rem;
   font-size: 0.875rem;
 }
 @media (max-width: 640px) {
-  .group-select {
+  .payer-select {
     min-width: 7rem;
   }
 }

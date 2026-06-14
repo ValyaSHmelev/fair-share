@@ -6,6 +6,7 @@ import {
   minimizeTransfers,
   participantBalances,
   participantTotals,
+  resolveCoverer,
   splitEqualRounded,
   sumOfAllShares,
 } from '@/lib/calc'
@@ -46,8 +47,7 @@ function makeEvent(): FairEvent {
     name: 'Шашлыки',
     date: null,
     currency: 'RUB',
-    participants: ids.map((id) => ({ id, name: id, groupId: null })),
-    groups: [],
+    participants: ids.map((id) => ({ id, name: id, paidById: null })),
     expenses: [
       {
         id: 'e1',
@@ -130,21 +130,13 @@ describe('итоги мероприятия', () => {
 })
 
 describe('buildReport', () => {
-  it('строит матрицу с итогами и группами', () => {
+  it('строит матрицу с итогами', () => {
     const ev = makeEvent()
-    ev.groups = [{ id: 'g1', name: 'Валя и Маша' }]
-    ev.participants[0].groupId = 'g1'
-    ev.participants[1].groupId = 'g1'
     const report = buildReport(ev)
 
     expect(report.rows.length).toBe(6)
     expect(report.participants.length).toBe(5)
     expect(report.participantTotals.reduce((a, b) => a + b, 0)).toBe(report.eventTotal)
-
-    const g = report.groupTotals[0]
-    expect(g.members.length).toBe(2)
-    // итог группы = сумма итогов Вали и Маши
-    expect(g.total).toBe(report.participantTotals[0] + report.participantTotals[1])
   })
 
   it('собирает позиции без участников отдельно', () => {
@@ -234,6 +226,74 @@ describe('participantBalances', () => {
     // позиция с несуществующим плательщиком игнорируется во взаиморасчётах
     const sum = [...balances.values()].reduce((acc, b) => acc + b.balance, 0)
     expect(sum).toBe(0)
+  })
+})
+
+describe('resolveCoverer (кто платит за участника)', () => {
+  it('по умолчанию участник платит сам за себя', () => {
+    const ev = makeEvent()
+    expect(resolveCoverer(ev.participants, 'masha')).toBe('masha')
+  })
+
+  it('разрешает прямую ссылку: парень платит за половинку', () => {
+    const ev = makeEvent()
+    // masha платит за себя через valya
+    ev.participants.find((p) => p.id === 'masha')!.paidById = 'valya'
+    expect(resolveCoverer(ev.participants, 'masha')).toBe('valya')
+  })
+
+  it('разрешает цепочку до конечного плательщика', () => {
+    const ev = makeEvent()
+    ev.participants.find((p) => p.id === 'masha')!.paidById = 'valya'
+    ev.participants.find((p) => p.id === 'valya')!.paidById = 'andr'
+    expect(resolveCoverer(ev.participants, 'masha')).toBe('andr')
+  })
+
+  it('цикл трактуется как «Сам» (не зацикливается)', () => {
+    const ev = makeEvent()
+    ev.participants.find((p) => p.id === 'masha')!.paidById = 'valya'
+    ev.participants.find((p) => p.id === 'valya')!.paidById = 'masha'
+    const r = resolveCoverer(ev.participants, 'masha')
+    expect(['masha', 'valya']).toContain(r)
+  })
+
+  it('висячая ссылка на несуществующего участника трактуется как «Сам»', () => {
+    const ev = makeEvent()
+    ev.participants.find((p) => p.id === 'masha')!.paidById = 'ghost'
+    expect(resolveCoverer(ev.participants, 'masha')).toBe('masha')
+  })
+})
+
+describe('взаиморасчёты с переносом доли на плательщика (paidById)', () => {
+  it('доля участника переносится на того, кто за него платит', () => {
+    const ev = makeEvent()
+    // valya платит за машу: долю маши несёт valya
+    ev.participants.find((p) => p.id === 'masha')!.paidById = 'valya'
+    const balances = participantBalances(ev)
+    // у маши owed обнуляется (её долю несёт valya)
+    expect(balances.get('masha')!.owed).toBe(0)
+    // paid остаётся как было (masha оплатила мясо 1718)
+    expect(balances.get('masha')!.paid).toBe(1718)
+  })
+
+  it('ИНВАРИАНТ: сумма всех балансов = 0 при наличии плательщиков за других', () => {
+    const ev = makeEvent()
+    ev.participants.find((p) => p.id === 'masha')!.paidById = 'valya'
+    ev.participants.find((p) => p.id === 'ilya')!.paidById = 'andr'
+    const balances = participantBalances(ev)
+    const sum = [...balances.values()].reduce((acc, b) => acc + b.balance, 0)
+    expect(sum).toBe(0)
+  })
+
+  it('переводы обнуляются и тот, за кого платят, не фигурирует как должник', () => {
+    const ev = makeEvent()
+    ev.participants.find((p) => p.id === 'masha')!.paidById = 'valya'
+    const report = buildReport(ev)
+    // masha никому не должна: её долю несёт valya
+    expect(report.settlements.some((s) => s.fromId === 'masha')).toBe(false)
+    const balanceMap = new Map<ID, number>(report.balances.map((b) => [b.participantId, b.balance]))
+    const after = applyTransfers(balanceMap, report.settlements)
+    for (const v of after.values()) expect(v).toBe(0)
   })
 })
 

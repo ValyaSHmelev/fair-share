@@ -4,7 +4,6 @@ import {
   type CurrencyCode,
   type Expense,
   type FairEvent,
-  type Group,
   type ID,
   type ImportMode,
   type Participant,
@@ -54,7 +53,6 @@ export const useEventsStore = defineStore('events', () => {
       date: payload.date,
       currency: payload.currency,
       participants: [],
-      groups: [],
       expenses: [],
       createdAt: nowIso(),
       updatedAt: nowIso(),
@@ -92,19 +90,16 @@ export const useEventsStore = defineStore('events', () => {
     clone.name = src.name + ' (копия)'
     clone.createdAt = nowIso()
     clone.updatedAt = nowIso()
-    // Перегенерируем id участников/групп/позиций, сохранив связи.
+    // Перегенерируем id участников/позиций, сохранив связи.
     const pMap = new Map<ID, ID>()
-    const gMap = new Map<ID, ID>()
-    clone.groups.forEach((g) => {
-      const nid = newId()
-      gMap.set(g.id, nid)
-      g.id = nid
-    })
     clone.participants.forEach((p) => {
       const nid = newId()
       pMap.set(p.id, nid)
       p.id = nid
-      if (p.groupId) p.groupId = gMap.get(p.groupId) ?? null
+    })
+    // Перепривязываем paidById после перегенерации id участников.
+    clone.participants.forEach((p) => {
+      if (p.paidById) p.paidById = pMap.get(p.paidById) ?? null
     })
     clone.expenses.forEach((ex) => {
       ex.id = newId()
@@ -117,13 +112,36 @@ export const useEventsStore = defineStore('events', () => {
   }
 
   // --- Участники ---
-  function addParticipant(eventId: ID, name: string): Participant | undefined {
+  function addParticipant(
+    eventId: ID,
+    name: string,
+    paidById: ID | null = null,
+  ): Participant | undefined {
     const event = getEventById(eventId)
     if (!event) return undefined
-    const participant: Participant = { id: newId(), name: name.trim(), groupId: null }
+    const exists = paidById && event.participants.some((p) => p.id === paidById)
+    const participant: Participant = {
+      id: newId(),
+      name: name.trim(),
+      paidById: exists ? paidById : null,
+    }
     event.participants.push(participant)
     touch(event)
     return participant
+  }
+
+  /** Назначает, кто платит за участника во взаиморасчётах. null — платит сам. */
+  function setPaidBy(eventId: ID, participantId: ID, paidById: ID | null): void {
+    const event = getEventById(eventId)
+    const p = event?.participants.find((x) => x.id === participantId)
+    if (!event || !p) return
+    // Нельзя ссылаться на самого себя или на несуществующего участника.
+    if (paidById === participantId || !event.participants.some((x) => x.id === paidById)) {
+      p.paidById = null
+    } else {
+      p.paidById = paidById
+    }
+    touch(event)
   }
 
   function renameParticipant(eventId: ID, participantId: ID, name: string): void {
@@ -143,45 +161,11 @@ export const useEventsStore = defineStore('events', () => {
       ex.participantIds = ex.participantIds.filter((id) => id !== participantId)
       if (ex.payerId === participantId) ex.payerId = null
     }
-    touch(event)
-  }
-
-  // --- Группы ---
-  function addGroup(eventId: ID, name: string, color?: string): Group | undefined {
-    const event = getEventById(eventId)
-    if (!event) return undefined
-    const group: Group = { id: newId(), name: name.trim(), color }
-    event.groups.push(group)
-    touch(event)
-    return group
-  }
-
-  function renameGroup(eventId: ID, groupId: ID, name: string): void {
-    const event = getEventById(eventId)
-    const g = event?.groups.find((x) => x.id === groupId)
-    if (event && g) {
-      g.name = name.trim()
-      touch(event)
-    }
-  }
-
-  function removeGroup(eventId: ID, groupId: ID): void {
-    const event = getEventById(eventId)
-    if (!event) return
-    event.groups = event.groups.filter((g) => g.id !== groupId)
+    // Сбрасываем ссылки тех, за кого платил удалённый участник.
     for (const p of event.participants) {
-      if (p.groupId === groupId) p.groupId = null
+      if (p.paidById === participantId) p.paidById = null
     }
     touch(event)
-  }
-
-  function assignToGroup(eventId: ID, participantId: ID, groupId: ID | null): void {
-    const event = getEventById(eventId)
-    const p = event?.participants.find((x) => x.id === participantId)
-    if (event && p) {
-      p.groupId = groupId
-      touch(event)
-    }
   }
 
   // --- Позиции ---
@@ -272,12 +256,9 @@ export const useEventsStore = defineStore('events', () => {
     deleteEvent,
     duplicateEvent,
     addParticipant,
+    setPaidBy,
     renameParticipant,
     removeParticipant,
-    addGroup,
-    renameGroup,
-    removeGroup,
-    assignToGroup,
     addExpense,
     updateExpense,
     removeExpense,
