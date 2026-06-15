@@ -5,13 +5,13 @@ import { getAuth } from "firebase/auth"
 
 // Ваша конфигурация Firebase
 const firebaseConfig = {
-    apiKey: "AIzaSyAGzc5xQaVo4hfkzJ7SuqlmFadQVojEDJQ",
-    authDomain: "fair-share-web.firebaseapp.com",
-    projectId: "fair-share-web",
-    storageBucket: "fair-share-web.firebasestorage.app",
-    messagingSenderId: "873435158111",
-    appId: "1:873435158111:web:ba99175cb845949f83edea",
-    measurementId: "G-NJJ8PSB1CN"
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 }
 
 // Initialize Firebase
