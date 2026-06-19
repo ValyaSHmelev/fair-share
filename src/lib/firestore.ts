@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   setDoc,
@@ -71,6 +72,16 @@ export function subscribeEvents(
 /** Создаёт или перезаписывает документ мероприятия. */
 export function saveEventDoc(uid: string, event: FairEvent): Promise<void> {
   return setDoc(eventDoc(uid, event.id), toPlain(event))
+}
+
+/**
+ * Разово читает мероприятие конкретного пользователя по прямой ссылке (для шаринга).
+ * Возвращает актуальные данные из Firestore либо null, если документа нет.
+ */
+export async function getPublicEvent(uid: string, eventId: ID): Promise<FairEvent | null> {
+  const snap = await getDoc(eventDoc(uid, eventId))
+  if (!snap.exists()) return null
+  return normalizeEvent(snap.data() as FairEvent)
 }
 
 /** Удаляет документ мероприятия. */

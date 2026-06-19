@@ -1,19 +1,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
-import { decodeEvent } from '@/lib/share'
+import { getPublicEvent } from '@/lib/firestore'
 import { buildReport } from '@/lib/calc'
 import { formatMoney, formatDate } from '@/lib/format'
 import { useEventsStore } from '@/stores/events'
+import { useAuthStore } from '@/stores/auth'
 import type { FairEvent } from '@/types/models'
 
+const props = defineProps<{ uid?: string; eventId?: string }>()
+
 const router = useRouter()
+const route = useRoute()
 const toast = useToast()
 const store = useEventsStore()
+const auth = useAuthStore()
 
 const event = ref<FairEvent | null>(null)
 const error = ref<string | null>(null)
@@ -21,16 +26,20 @@ const loading = ref(true)
 const importing = ref(false)
 
 onMounted(async () => {
-  const hash = window.location.hash.slice(1)
-  if (!hash) {
-    error.value = 'Ссылка не содержит данных мероприятия.'
+  if (!props.uid || !props.eventId) {
+    error.value = 'Некорректная ссылка на отчёт.'
     loading.value = false
     return
   }
   try {
-    event.value = await decodeEvent(hash)
+    const loaded = await getPublicEvent(props.uid, props.eventId)
+    if (!loaded) {
+      error.value = 'Отчёт не найден. Возможно, мероприятие было удалено.'
+    } else {
+      event.value = loaded
+    }
   } catch {
-    error.value = 'Не удалось прочитать данные. Возможно, ссылка повреждена или устарела.'
+    error.value = 'Не удалось загрузить данные. Проверьте подключение и попробуйте ещё раз.'
   } finally {
     loading.value = false
   }
@@ -53,6 +62,11 @@ function money(value: number) {
 
 async function importEvent() {
   if (!event.value) return
+  // Импорт сохраняет данные в облако — требуется вход в аккаунт.
+  if (!auth.isAuthenticated) {
+    await router.push({ name: 'login', query: { redirect: route.fullPath } })
+    return
+  }
   importing.value = true
   try {
     store.importSingleEvent(event.value)

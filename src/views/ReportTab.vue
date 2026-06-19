@@ -6,11 +6,13 @@ import { buildShareUrl } from '@/lib/share'
 import Message from 'primevue/message'
 import EmptyState from '@/components/EmptyState.vue'
 import { useEventsStore } from '@/stores/events'
+import { useAuthStore } from '@/stores/auth'
 import { buildReport } from '@/lib/calc'
 import { formatMoney } from '@/lib/format'
 
 const props = defineProps<{ id: string }>()
 const store = useEventsStore()
+const auth = useAuthStore()
 const toast = useToast()
 
 const event = computed(() => store.getEventById(props.id))
@@ -31,8 +33,13 @@ function money(value: number) {
 
 async function share() {
   if (!event.value) return
+  const uid = auth.user?.uid
+  if (!uid) {
+    toast.add({ severity: 'warn', summary: 'Войдите в аккаунт, чтобы поделиться', life: 3000 })
+    return
+  }
   try {
-    const url = await buildShareUrl(event.value)
+    const url = buildShareUrl(uid, event.value.id)
     await navigator.clipboard.writeText(url)
     toast.add({ severity: 'success', summary: 'Ссылка скопирована', detail: 'Отправьте её участникам', life: 3000 })
   } catch {

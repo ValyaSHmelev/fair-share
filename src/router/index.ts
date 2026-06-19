@@ -51,10 +51,11 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
-    path: '/share',
+    path: '/share/:uid/:eventId',
     name: 'shared-report',
     component: () => import('@/views/SharedReportView.vue'),
     meta: { public: true },
+    props: true,
   },
   {
     path: '/:pathMatch(.*)*',
