@@ -84,6 +84,7 @@ fair-share/
       ├─ ExpensesTab.vue      # вкладка «Расходы»
       ├─ ReportTab.vue        # вкладка «Отчёт»
       ├─ SharedReportView.vue # просмотр отчёта по shared-ссылке
+      ├─ ProfileView.vue      # профиль пользователя (имя, реквизиты для перевода)
       ├─ SettingsView.vue     # экспорт/импорт, тема
       ├─ LoginView.vue        # вход (email/password, Google)
       ├─ RegisterView.vue     # регистрация (email/password, Google)
@@ -261,6 +262,12 @@ export interface Settlement {
 - **Доступ:** правила Firestore разрешают чтение отдельного документа мероприятия по прямой ссылке (`get`) любому; листинг коллекции (`list`), создание/изменение/удаление — только владельцу. Идентификаторы — случайные UUID («unguessable URL»).
 - **Legacy:** старые ссылки вида `/share#{encoded}` (gzip + base64url) по-прежнему читаются через `decodeEvent` с нормализацией legacy-полей.
 
+### 7.5. Профиль пользователя
+- Платёжные реквизиты пользователя (`UserProfile`) хранятся в документе `users/{uid}` в поле `profile`.
+- **Слой доступа:** `src/lib/firestore.ts` — `getUserProfile(uid)` (разовое чтение с нормализацией и значениями по умолчанию) и `saveUserProfile(uid, profile)` (запись через `setDoc(..., { merge: true })`, чтобы не затирать подколлекцию `events`).
+- **Тип `UserProfile`:** `paymentMethod` (`'sbp' | 'card'`, по умолчанию `sbp`), `phone`, `bank` (для СБП), `cardNumber` (для карты), `recipient` (отображаемое имя получателя).
+- Отображаемое имя (`displayName`) хранится в Firebase Auth, а не в профиле.
+
 ---
 
 ## 8. Маршрутизация
@@ -272,6 +279,7 @@ export interface Settlement {
 | `/share/:uid/:eventId` | `SharedReportView` | публичный | Просмотр живого отчёта по короткой ссылке |
 | `/share` | `SharedReportView` | публичный | Legacy: просмотр отчёта по старой ссылке `#{encoded}` |
 | `/` | `EventsListView` | защищённый | Список мероприятий |
+| `/profile` | `ProfileView` | защищённый | Профиль пользователя (имя, реквизиты для перевода) |
 | `/events/:id` | `EventDetailView` | защищённый | Карточка мероприятия (редирект на `participants`) |
 | `/events/:id/participants` | `ParticipantsTab` | защищённый | Участники |
 | `/events/:id/expenses` | `ExpensesTab` | защищённый | Позиции расходов |
@@ -298,7 +306,7 @@ export interface Settlement {
 - Логотип «FairShare», ссылка на `/`.
 - Переключатель темы (хранится в `settings` сторе).
 - Ссылка на «Настройки».
-- **Меню пользователя:** когда пользователь вошёл — показывается его email/имя (или `Avatar`) с выпадающим меню (`Menu`) и пунктом **«Выйти»** (`signOut` → редирект на `/login`).
+- **Меню пользователя:** когда пользователь вошёл — показывается его email/имя (или `Avatar`) с выпадающим меню (`Menu`) и пунктами **«Профиль»** (переход на `/profile`) и **«Выйти»** (`signOut` → редирект на `/login`).
 - На публичных экранах входа/регистрации шапка не отображается.
 
 ### 9.2. Список мероприятий (`EventsListView`)
@@ -338,12 +346,23 @@ export interface Settlement {
 - Показывает отчёт в режиме «только чтение»; состояния загрузки/ошибки.
 - Кнопка «Добавить к себе» сохраняет копию мероприятия в Firestore текущего пользователя; если пользователь не вошёл — редирект на `/login` с возвратом.
 
-### 9.8. Настройки (`SettingsView`)
+### 9.8. Профиль (`ProfileView`)
+- Доступен из меню пользователя в шапке (`/profile`).
+- Редактируемая форма с данными пользователя:
+  - **Отображаемое имя** (`displayName`) — сохраняется в Firebase Auth через `updateProfile` (стор `auth.updateDisplayName`). Под полем показывается email.
+  - **Способ перевода** (`SelectButton`): «СБП» / «Карта», по умолчанию — СБП.
+  - **Номер телефона** и **Банк** — показываются, если выбран способ «СБП».
+  - **Номер карты** — показывается, если выбран способ «Карта».
+  - **Получатель** — отображаемое имя получателя, как высвечивается в приложении банка (например, «Валентин Ш.»).
+- Реквизиты (`UserProfile`) хранятся в Firestore в документе `users/{uid}` в поле `profile` (см. 7.5); при первом открытии подставляются значения по умолчанию.
+- Кнопка **«Сохранить»**: обновляет `displayName` (если изменился) и пишет профиль в Firestore; результат — через `Toast`.
+
+### 9.9. Настройки (`SettingsView`)
 - Экспорт данных (JSON), импорт (JSON) с режимами «Заменить»/«Объединить».
 - Переключатель темы.
 - Кнопка «Очистить все данные» (с двойным подтверждением).
 
-### 9.9. Вход (`LoginView`)
+### 9.10. Вход (`LoginView`)
 - Центрированная карточка (`Card`) с логотипом «FairShare», без общей шапки приложения.
 - Поля: **email** (`InputText`, тип email), **пароль** (`Password`, без индикатора силы).
 - Кнопка **«Войти»** — `signInWithEmailAndPassword`. На время запроса — `loading`-состояние кнопки.
@@ -352,7 +371,7 @@ export interface Settlement {
 - Валидация: email непустой/корректный, пароль непустой. Ошибки Firebase (неверный email/пароль, пользователь не найден и т.д.) показываются через `Toast` с понятными русскоязычными сообщениями.
 - После успешного входа — редирект на `redirect` или `/`.
 
-### 9.10. Регистрация (`RegisterView`)
+### 9.11. Регистрация (`RegisterView`)
 - Аналогичная карточка без общей шапки.
 - Поля: **имя**, **фамилия** (в одной строке), **email**, **пароль** (`Password` с индикатором силы), **повтор пароля**.
 - Кнопка **«Зарегистрироваться»** — `createUserWithEmailAndPassword`, затем `updateProfile` устанавливает `displayName = "Имя Фамилия"`, чтобы в интерфейсе (меню пользователя) отображалось имя, а не email (единообразно с входом через Google).
@@ -378,5 +397,5 @@ export interface Settlement {
 - Состояние: `user: User | null` (текущий пользователь Firebase), `ready: boolean` (завершена ли первичная проверка сессии).
 - Геттеры: `isAuthenticated`, `displayName` (`user.displayName || user.email`).
 - Инициализация: подписка `onAuthStateChanged(auth, ...)` обновляет `user` и выставляет `ready = true` (вызывается один раз в `main.ts`).
-- Действия (обёртки над `lib/auth.ts`): `loginWithEmail(email, password)`, `registerWithEmail(email, password, displayName?)`, `loginWithGoogle()`, `logout()`. При регистрации с указанным `displayName` вызывается `updateProfile`. Ошибки Firebase пробрасываются для обработки во вьюх. После `updateProfile` реактивность `displayName` принудительно обновляется (`triggerRef`).
+- Действия (обёртки над `lib/auth.ts`): `loginWithEmail(email, password)`, `registerWithEmail(email, password, displayName?)`, `loginWithGoogle()`, `updateDisplayName(name)`, `logout()`. При регистрации с указанным `displayName` вызывается `updateProfile`. Ошибки Firebase пробрасываются для обработки во вьюх. После `updateProfile` реактивность `displayName` принудительно обновляется (`triggerRef`).
 - При изменении `user` (в `main.ts`) запускается привязка/отписка стора `events` к данным пользователя в Firestore.

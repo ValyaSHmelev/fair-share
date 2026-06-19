@@ -20,6 +20,11 @@ function goSettings() {
 const userMenu = ref<InstanceType<typeof Menu> | null>(null)
 const userMenuItems = ref<MenuItem[]>([
   {
+    label: 'Профиль',
+    icon: 'pi pi-user',
+    command: () => router.push({ name: 'profile' }),
+  },
+  {
     label: 'Выйти',
     icon: 'pi pi-sign-out',
     command: () => void handleLogout(),

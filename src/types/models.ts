@@ -54,6 +54,35 @@ export interface FairEvent {
   updatedAt: string
 }
 
+export type PaymentMethod = 'sbp' | 'card'
+
+/**
+ * Платёжные реквизиты пользователя для приёма переводов.
+ * Хранятся в документе `users/{uid}` в поле `profile`.
+ */
+export interface UserProfile {
+  /** Предпочитаемый способ перевода. По умолчанию — СБП. */
+  paymentMethod: PaymentMethod
+  /** Номер телефона для перевода по СБП. */
+  phone: string
+  /** Банк-получатель для перевода по СБП. */
+  bank: string
+  /** Номер карты для перевода по карте. */
+  cardNumber: string
+  /** Отображаемое имя получателя (как высвечивается в приложении банка). */
+  recipient: string
+}
+
+export function createEmptyProfile(): UserProfile {
+  return {
+    paymentMethod: 'sbp',
+    phone: '',
+    bank: '',
+    cardNumber: '',
+    recipient: '',
+  }
+}
+
 export interface PersistedState {
   schemaVersion: number
   events: FairEvent[]

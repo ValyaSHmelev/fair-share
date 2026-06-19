@@ -47,6 +47,11 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = await authApi.loginWithGoogle()
   }
 
+  async function updateDisplayName(name: string): Promise<void> {
+    user.value = await authApi.updateDisplayName(name)
+    triggerRef(user)
+  }
+
   async function logout(): Promise<void> {
     await authApi.logout()
     user.value = null
@@ -61,6 +66,7 @@ export const useAuthStore = defineStore('auth', () => {
     loginWithEmail,
     registerWithEmail,
     loginWithGoogle,
+    updateDisplayName,
     logout,
   }
 })

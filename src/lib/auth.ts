@@ -76,6 +76,19 @@ export async function loginWithGoogle(): Promise<User> {
   }
 }
 
+export async function updateDisplayName(displayName: string): Promise<User> {
+  const user = auth.currentUser
+  if (!user) {
+    throw new AuthError('auth/no-current-user', 'Пользователь не авторизован.')
+  }
+  try {
+    await updateProfile(user, { displayName: displayName.trim() })
+    return user
+  } catch (err) {
+    throw toAuthError(err)
+  }
+}
+
 export async function logout(): Promise<void> {
   try {
     await signOut(auth)

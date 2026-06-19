@@ -10,7 +10,7 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore'
 import { db } from './firebase'
-import type { FairEvent, ID } from '@/types/models'
+import { createEmptyProfile, type FairEvent, type ID, type UserProfile } from '@/types/models'
 
 /** Ссылка на коллекцию мероприятий конкретного пользователя. */
 function eventsCol(uid: string) {
@@ -19,6 +19,36 @@ function eventsCol(uid: string) {
 
 function eventDoc(uid: string, eventId: ID) {
   return doc(db, 'users', uid, 'events', eventId)
+}
+
+/** Ссылка на документ пользователя (хранит платёжный профиль). */
+function userDoc(uid: string) {
+  return doc(db, 'users', uid)
+}
+
+/** Приводит профиль к актуальной схеме, подставляя значения по умолчанию. */
+function normalizeProfile(raw: Partial<UserProfile> | undefined): UserProfile {
+  const base = createEmptyProfile()
+  if (!raw) return base
+  return {
+    paymentMethod: raw.paymentMethod === 'card' ? 'card' : 'sbp',
+    phone: typeof raw.phone === 'string' ? raw.phone : base.phone,
+    bank: typeof raw.bank === 'string' ? raw.bank : base.bank,
+    cardNumber: typeof raw.cardNumber === 'string' ? raw.cardNumber : base.cardNumber,
+    recipient: typeof raw.recipient === 'string' ? raw.recipient : base.recipient,
+  }
+}
+
+/** Разово читает платёжный профиль пользователя; возвращает значения по умолчанию, если профиля нет. */
+export async function getUserProfile(uid: string): Promise<UserProfile> {
+  const snap = await getDoc(userDoc(uid))
+  const data = snap.exists() ? (snap.data() as { profile?: Partial<UserProfile> }) : undefined
+  return normalizeProfile(data?.profile)
+}
+
+/** Сохраняет платёжный профиль пользователя (merge, чтобы не затирать прочие поля документа). */
+export function saveUserProfile(uid: string, profile: UserProfile): Promise<void> {
+  return setDoc(userDoc(uid), { profile: normalizeProfile(profile) }, { merge: true })
 }
 
 /**
