@@ -1,6 +1,19 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const routes: RouteRecordRaw[] = [
+  {
+    path: '/login',
+    name: 'login',
+    component: () => import('@/views/LoginView.vue'),
+    meta: { public: true },
+  },
+  {
+    path: '/register',
+    name: 'register',
+    component: () => import('@/views/RegisterView.vue'),
+    meta: { public: true },
+  },
   {
     path: '/',
     name: 'events',
@@ -41,6 +54,7 @@ const routes: RouteRecordRaw[] = [
     path: '/share',
     name: 'shared-report',
     component: () => import('@/views/SharedReportView.vue'),
+    meta: { public: true },
   },
   {
     path: '/:pathMatch(.*)*',
@@ -55,4 +69,24 @@ export const router = createRouter({
   scrollBehavior() {
     return { top: 0 }
   },
+})
+
+router.beforeEach(async (to) => {
+  const auth = useAuthStore()
+  if (!auth.ready) {
+    await auth.init()
+  }
+
+  const isPublic = to.matched.some((r) => r.meta.public)
+
+  if (!isPublic && !auth.isAuthenticated) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+
+  if (auth.isAuthenticated && (to.name === 'login' || to.name === 'register')) {
+    const redirect = to.query.redirect
+    return typeof redirect === 'string' && redirect.startsWith('/') ? redirect : { name: 'events' }
+  }
+
+  return true
 })

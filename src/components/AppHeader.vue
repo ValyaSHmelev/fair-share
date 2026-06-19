@@ -1,13 +1,42 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import Button from 'primevue/button'
+import Menu from 'primevue/menu'
+import type { MenuItem } from 'primevue/menuitem'
+import { useToast } from 'primevue/usetoast'
 import { useSettingsStore } from '@/stores/settings'
+import { useAuthStore } from '@/stores/auth'
 
 const settings = useSettingsStore()
+const auth = useAuthStore()
 const router = useRouter()
+const toast = useToast()
 
 function goSettings() {
   router.push({ name: 'settings' })
+}
+
+const userMenu = ref<InstanceType<typeof Menu> | null>(null)
+const userMenuItems = ref<MenuItem[]>([
+  {
+    label: 'Выйти',
+    icon: 'pi pi-sign-out',
+    command: () => void handleLogout(),
+  },
+])
+
+function toggleUserMenu(event: Event) {
+  userMenu.value?.toggle(event)
+}
+
+async function handleLogout() {
+  try {
+    await auth.logout()
+    router.replace({ name: 'login' })
+  } catch {
+    toast.add({ severity: 'error', summary: 'Не удалось выйти', life: 3000 })
+  }
 }
 </script>
 
@@ -37,6 +66,25 @@ function goSettings() {
         v-tooltip.bottom="'Настройки'"
         @click="goSettings"
       />
+      <template v-if="auth.isAuthenticated">
+        <Button
+          class="user-button"
+          icon="pi pi-user"
+          severity="secondary"
+          text
+          rounded
+          :aria-label="auth.displayName || 'Пользователь'"
+          v-tooltip.bottom="auth.displayName"
+          @click="toggleUserMenu"
+        />
+        <Menu ref="userMenu" :model="userMenuItems" :popup="true">
+          <template #start>
+            <div v-if="auth.displayName" class="user-menu-head">
+              <span class="user-menu-name">{{ auth.displayName }}</span>
+            </div>
+          </template>
+        </Menu>
+      </template>
     </div>
   </header>
 </template>
@@ -77,5 +125,20 @@ function goSettings() {
   color: #0b0e14;
   font-weight: 800;
   font-size: 0.85rem;
+}
+
+.user-menu-head {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--p-content-border-color);
+  max-width: 16rem;
+}
+
+.user-menu-name {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

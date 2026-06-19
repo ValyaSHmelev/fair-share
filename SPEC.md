@@ -21,6 +21,7 @@
 5. **Округление — до целых рублей** с компенсацией остатка методом наибольших остатков (сумма долей строго равна округлённой цене позиции).
 6. **Валюта — на уровне мероприятия**. При создании выбирается валюта (по умолчанию ₽); внутри мероприятия валюта одна. Доступные: RUB, USD, EUR, KZT, GBP.
 7. **Хранение и шаринг**. Данные хранятся в `localStorage`. Поддерживается экспорт/импорт всех данных в JSON-файл. Реализован шаринг отчёта по ссылке (данные мероприятия кодируются в URL через gzip + base64url).
+8. **Авторизация — обязательная**. Вход через Firebase Authentication (email/password и Google). Доступ к приложению закрыт для неаутентифицированных пользователей; публичны только экраны входа/регистрации и просмотр отчёта по shared-ссылке. На текущем этапе данные мероприятий по-прежнему в `localStorage` (без привязки к пользователю); серверная синхронизация — будущая доработка.
 
 ---
 
@@ -36,6 +37,7 @@
 | UI-компоненты | **PrimeVue** (тема Aura, `primeicons`) |
 | Тесты | **Vitest** |
 | Аналитика | **Firebase** (Analytics) |
+| Авторизация | **Firebase Authentication** (email/password, Google) |
 | PWA | **vite-plugin-pwa** |
 
 ---
@@ -57,6 +59,7 @@ fair-share/
    │  └─ index.ts
    ├─ stores/
    │  ├─ events.ts            # Pinia-стор мероприятий (CRUD, персист)
+   │  ├─ auth.ts              # Pinia-стор авторизации (текущий пользователь, статус)
    │  └─ settings.ts          # Pinia-стор настроек (тема)
    ├─ types/
    │  └─ models.ts            # TS-типы доменной модели
@@ -66,7 +69,8 @@ fair-share/
    │  ├─ storage.ts           # работа с localStorage
    │  ├─ io.ts                # экспорт/импорт JSON
    │  ├─ share.ts             # кодирование/декодирование ссылки на отчёт
-   │  ├─ firebase.ts          # инициализация Firebase
+   │  ├─ firebase.ts          # инициализация Firebase (app, auth, db, analytics)
+   │  ├─ auth.ts              # обёртки над Firebase Auth (вход, регистрация, выход, Google)
    │  └─ format.ts            # форматирование валюты/чисел
    ├─ components/
    │  ├─ AppHeader.vue
@@ -80,6 +84,8 @@ fair-share/
       ├─ ReportTab.vue        # вкладка «Отчёт»
       ├─ SharedReportView.vue # просмотр отчёта по shared-ссылке
       ├─ SettingsView.vue     # экспорт/импорт, тема
+      ├─ LoginView.vue        # вход (email/password, Google)
+      ├─ RegisterView.vue     # регистрация (email/password, Google)
       └─ NotFoundView.vue     # 404
 ```
 
@@ -254,16 +260,27 @@ export interface Settlement {
 
 ## 8. Маршрутизация
 
-| Путь | View | Назначение |
-|---|---|---|
-| `/` | `EventsListView` | Список мероприятий |
-| `/events/:id` | `EventDetailView` | Карточка мероприятия (редирект на `participants`) |
-| `/events/:id/participants` | `ParticipantsTab` | Участники |
-| `/events/:id/expenses` | `ExpensesTab` | Позиции расходов |
-| `/events/:id/report` | `ReportTab` | Отчёт |
-| `/share` | `SharedReportView` | Просмотр отчёта по shared-ссылке |
-| `/settings` | `SettingsView` | Экспорт/импорт, тема |
-| `/:pathMatch(.*)*` | `NotFoundView` | 404 |
+| Путь | View | Доступ | Назначение |
+|---|---|---|---|
+| `/login` | `LoginView` | публичный | Вход |
+| `/register` | `RegisterView` | публичный | Регистрация |
+| `/share` | `SharedReportView` | публичный | Просмотр отчёта по shared-ссылке |
+| `/` | `EventsListView` | защищённый | Список мероприятий |
+| `/events/:id` | `EventDetailView` | защищённый | Карточка мероприятия (редирект на `participants`) |
+| `/events/:id/participants` | `ParticipantsTab` | защищённый | Участники |
+| `/events/:id/expenses` | `ExpensesTab` | защищённый | Позиции расходов |
+| `/events/:id/report` | `ReportTab` | защищённый | Отчёт |
+| `/settings` | `SettingsView` | защищённый | Экспорт/импорт, тема |
+| `/:pathMatch(.*)*` | `NotFoundView` | — | 404 |
+
+### 8.1. Гард авторизации
+- Авторизация **обязательна**. Публичные роуты (помечены `meta.public`): `/login`, `/register`, `/share`. Остальные — только для аутентифицированных пользователей.
+- Глобальный `router.beforeEach`:
+  - Дожидается первичной инициализации аутентификации (`onAuthStateChanged` разрешён хотя бы раз) через `authStore.ready`.
+  - Если роут защищённый и пользователь не вошёл → редирект на `/login?redirect=<исходный_путь>`.
+  - Если пользователь вошёл и открывает `/login` или `/register` → редирект на `/` (или на `redirect`).
+- `/share` остаётся доступным без входа, чтобы можно было делиться отчётом.
+- На данном этапе данные мероприятий продолжают храниться в `localStorage` и не привязаны к `uid` пользователя (привязка и синхронизация — будущие доработки).
 
 ---
 
@@ -275,6 +292,8 @@ export interface Settlement {
 - Логотип «FairShare», ссылка на `/`.
 - Переключатель темы (хранится в `settings` сторе).
 - Ссылка на «Настройки».
+- **Меню пользователя:** когда пользователь вошёл — показывается его email/имя (или `Avatar`) с выпадающим меню (`Menu`) и пунктом **«Выйти»** (`signOut` → редирект на `/login`).
+- На публичных экранах входа/регистрации шапка не отображается.
 
 ### 9.2. Список мероприятий (`EventsListView`)
 - Карточки: название, дата, число участников, общая сумма, валюта.
@@ -318,6 +337,24 @@ export interface Settlement {
 - Переключатель темы.
 - Кнопка «Очистить все данные» (с двойным подтверждением).
 
+### 9.9. Вход (`LoginView`)
+- Центрированная карточка (`Card`) с логотипом «FairShare», без общей шапки приложения.
+- Поля: **email** (`InputText`, тип email), **пароль** (`Password`, без индикатора силы).
+- Кнопка **«Войти»** — `signInWithEmailAndPassword`. На время запроса — `loading`-состояние кнопки.
+- Кнопка **«Войти через Google»** (иконка Google) — `signInWithPopup` с `GoogleAuthProvider`.
+- Ссылка **«Нет аккаунта? Зарегистрироваться»** → `/register` (с сохранением `redirect`).
+- Валидация: email непустой/корректный, пароль непустой. Ошибки Firebase (неверный email/пароль, пользователь не найден и т.д.) показываются через `Toast` с понятными русскоязычными сообщениями.
+- После успешного входа — редирект на `redirect` или `/`.
+
+### 9.10. Регистрация (`RegisterView`)
+- Аналогичная карточка без общей шапки.
+- Поля: **email**, **пароль** (`Password` с индикатором силы), **повтор пароля**.
+- Кнопка **«Зарегистрироваться»** — `createUserWithEmailAndPassword`.
+- Кнопка **«Регистрация через Google»** — `signInWithPopup` с `GoogleAuthProvider`.
+- Ссылка **«Уже есть аккаунт? Войти»** → `/login`.
+- Валидация: корректный email, пароль ≥ 6 символов (требование Firebase), совпадение паролей. Ошибки (`email-already-in-use` и др.) — через `Toast`.
+- После успешной регистрации пользователь автоматически авторизован → редирект на `/`.
+
 ---
 
 ## 10. Состояние (Pinia)
@@ -329,3 +366,10 @@ export interface Settlement {
 
 ### `stores/settings.ts`
 - `theme: 'dark' | 'light'` (по умолчанию `'dark'`), персист в localStorage.
+
+### `stores/auth.ts`
+- Состояние: `user: User | null` (текущий пользователь Firebase), `ready: boolean` (завершена ли первичная проверка сессии).
+- Геттеры: `isAuthenticated`, `displayName` (`user.displayName || user.email`).
+- Инициализация: подписка `onAuthStateChanged(auth, ...)` обновляет `user` и выставляет `ready = true` (вызывается один раз в `main.ts`).
+- Действия (обёртки над `lib/auth.ts`): `loginWithEmail(email, password)`, `registerWithEmail(email, password)`, `loginWithGoogle()`, `logout()`. Возвращают ошибки Firebase для обработки во вьюх.
+- На данном этапе стор не влияет на `events` (данные общие в localStorage).
