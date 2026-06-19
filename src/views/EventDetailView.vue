@@ -18,6 +18,8 @@ const toast = useToast()
 const event = computed(() => store.getEventById(props.id))
 
 watchEffect(() => {
+  // Ждём загрузку облачных данных, чтобы не редиректить раньше времени.
+  if (!store.ready) return
   if (!event.value) {
     toast.add({ severity: 'warn', summary: 'Мероприятие не найдено', life: 2500 })
     router.replace('/')
@@ -76,6 +78,10 @@ function go(name: string) {
 
     <RouterView />
   </div>
+  <div v-else-if="!store.ready" class="fs-loading">
+    <i class="pi pi-spin pi-spinner" />
+    <span>Загрузка…</span>
+  </div>
 </template>
 
 <style scoped>
@@ -83,6 +89,17 @@ function go(name: string) {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
+}
+.fs-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 3rem 0;
+  color: var(--p-text-muted-color);
+}
+.fs-loading .pi-spinner {
+  font-size: 1.4rem;
 }
 .head-info {
   flex: 1;

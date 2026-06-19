@@ -120,6 +120,12 @@ function summary(event: FairEvent) {
       <Button label="Создать" icon="pi pi-plus" @click="openCreate" />
     </div>
 
+    <div v-if="!store.ready" class="fs-loading">
+      <i class="pi pi-spin pi-spinner" />
+      <span>Загрузка…</span>
+    </div>
+
+    <template v-else>
     <IconField v-if="store.events.length" class="search-field">
       <InputIcon class="pi pi-search" />
       <InputText v-model="search" placeholder="Поиск по названию" fluid />
@@ -201,6 +207,7 @@ function summary(event: FairEvent) {
         </template>
       </Card>
     </div>
+    </template>
 
     <Dialog
       v-model:visible="dialogVisible"
@@ -248,6 +255,17 @@ function summary(event: FairEvent) {
 .search-field {
   max-width: 360px;
   width: 100%;
+}
+.fs-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 3rem 0;
+  color: var(--p-text-muted-color);
+}
+.fs-loading .pi-spinner {
+  font-size: 1.4rem;
 }
 .events-grid {
   display: grid;

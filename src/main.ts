@@ -1,4 +1,4 @@
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 import { createPinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import Aura from '@primevue/themes/aura'
@@ -9,14 +9,30 @@ import Tooltip from 'primevue/tooltip'
 import App from './App.vue'
 import { router } from './router'
 import { registerSW } from 'virtual:pwa-register'
+import { useAuthStore } from '@/stores/auth'
+import { useEventsStore } from '@/stores/events'
 
 import 'primeicons/primeicons.css'
 import './assets/styles/main.css'
 
 const app = createApp(App)
 
-app.use(createPinia())
+const pinia = createPinia()
+app.use(pinia)
 app.use(router)
+
+// Привязываем облачные данные мероприятий к текущему пользователю.
+const authStore = useAuthStore(pinia)
+const eventsStore = useEventsStore(pinia)
+authStore.init()
+watch(
+  () => authStore.user,
+  (user) => {
+    if (user) eventsStore.bindUser(user.uid)
+    else eventsStore.unbind()
+  },
+  { immediate: true },
+)
 app.use(PrimeVue, {
   theme: {
     preset: Aura,

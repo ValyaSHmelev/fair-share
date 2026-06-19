@@ -20,8 +20,8 @@
 4. **UI-библиотека — PrimeVue**. Тёмная тема по умолчанию, адаптивность.
 5. **Округление — до целых рублей** с компенсацией остатка методом наибольших остатков (сумма долей строго равна округлённой цене позиции).
 6. **Валюта — на уровне мероприятия**. При создании выбирается валюта (по умолчанию ₽); внутри мероприятия валюта одна. Доступные: RUB, USD, EUR, KZT, GBP.
-7. **Хранение и шаринг**. Данные хранятся в `localStorage`. Поддерживается экспорт/импорт всех данных в JSON-файл. Реализован шаринг отчёта по ссылке (данные мероприятия кодируются в URL через gzip + base64url).
-8. **Авторизация — обязательная**. Вход через Firebase Authentication (email/password и Google). Доступ к приложению закрыт для неаутентифицированных пользователей; публичны только экраны входа/регистрации и просмотр отчёта по shared-ссылке. На текущем этапе данные мероприятий по-прежнему в `localStorage` (без привязки к пользователю); серверная синхронизация — будущая доработка.
+7. **Хранение и шаринг**. Данные мероприятий хранятся в **Cloud Firestore** и привязаны к аутентифицированному пользователю (`uid`). Один документ на мероприятие в коллекции `users/{uid}/events/{eventId}`. Синхронизация в реальном времени между устройствами через `onSnapshot`; включена офлайн-персистентность (IndexedDB), поэтому приложение работает без сети и кеширует данные. `localStorage` для мероприятий больше не используется. Поддерживается экспорт/импорт всех данных в JSON-файл и шаринг отчёта по ссылке (данные мероприятия кодируются в URL через gzip + base64url).
+8. **Авторизация — обязательная**. Вход через Firebase Authentication (email/password и Google). Доступ к приложению закрыт для неаутентифицированных пользователей; публичны только экраны входа/регистрации и просмотр отчёта по shared-ссылке. Данные мероприятий привязаны к `uid`: при входе стор подписывается на облачную коллекцию пользователя, при выходе — отписывается и очищает локальное состояние. Пользователь видит свои данные с любого устройства.
 
 ---
 
@@ -32,12 +32,13 @@
 | Сборщик | **Vite** |
 | Фреймворк | **Vue 3** (Composition API, `<script setup>`) |
 | Язык | **TypeScript** (strict mode) |
-| Стейт-менеджер | **Pinia** (персист в localStorage) |
+| Стейт-менеджер | **Pinia** (мероприятия — Cloud Firestore; тема — localStorage) |
 | Роутинг | **Vue Router** (history mode) |
 | UI-компоненты | **PrimeVue** (тема Aura, `primeicons`) |
 | Тесты | **Vitest** |
 | Аналитика | **Firebase** (Analytics) |
 | Авторизация | **Firebase Authentication** (email/password, Google) |
+| База данных | **Cloud Firestore** (хранение мероприятий, real-time sync, офлайн-кеш) |
 | PWA | **vite-plugin-pwa** |
 
 ---
@@ -66,10 +67,10 @@ fair-share/
    ├─ lib/
    │  ├─ calc.ts              # чистые функции расчётов (доли, итоги, округление)
    │  ├─ calc.test.ts         # Vitest unit-тесты
-   │  ├─ storage.ts           # работа с localStorage
+   │  ├─ firestore.ts         # слой доступа к данным мероприятий в Cloud Firestore
    │  ├─ io.ts                # экспорт/импорт JSON
    │  ├─ share.ts             # кодирование/декодирование ссылки на отчёт
-   │  ├─ firebase.ts          # инициализация Firebase (app, auth, db, analytics)
+   │  ├─ firebase.ts          # инициализация Firebase (app, auth, db с офлайн-кешем, analytics)
    │  ├─ auth.ts              # обёртки над Firebase Auth (вход, регистрация, выход, Google)
    │  └─ format.ts            # форматирование валюты/чисел
    ├─ components/
@@ -230,11 +231,14 @@ export interface Settlement {
 
 ## 7. Хранилище, экспорт и импорт
 
-### 7.1. localStorage
-- Ключ: `fairshare:state:v1`.
-- Стор Pinia при любой мутации сохраняет `PersistedState` в `localStorage`.
-- При загрузке: legacy-нормализация (`payerId` → `null`, `paidById` → `null` для старых записей).
-- Операции записи обёрнуты в try/catch с уведомлением через PrimeVue `Toast`.
+### 7.1. Cloud Firestore
+- **Структура:** `users/{uid}/events/{eventId}` — один документ на мероприятие. Содержимое документа — объект `FairEvent` (без реактивных обёрток, плоский JSON).
+- **Слой доступа:** `src/lib/firestore.ts` — `subscribeEvents`, `saveEventDoc`, `deleteEventDoc`, `saveEventsBatch`, `deleteAllEvents`.
+- **Синхронизация:** при входе стор `events` подписывается на коллекцию пользователя через `onSnapshot`; любое изменение (с любого устройства) приходит в реальном времени. Мутации обновляют локальное состояние оптимистично и пишут изменённый документ в Firestore.
+- **Офлайн:** включён `persistentLocalCache` (IndexedDB, multi-tab) — данные кешируются, работа без сети поддерживается, записи синхронизируются при восстановлении соединения.
+- **Нормализация:** при чтении из Firestore применяется legacy-нормализация (`payerId` → `null`, `paidById` → `null`).
+- **Ошибки** записи/чтения попадают в `lastError` стора и логируются; UI может показать `Toast`.
+- **Правила безопасности Firestore** должны разрешать доступ к `users/{uid}/**` только владельцу (`request.auth.uid == uid`).
 
 ### 7.2. Экспорт JSON
 Формирует и скачивает `fairshare-backup-YYYY-MM-DD.json`:
@@ -253,7 +257,7 @@ export interface Settlement {
 
 ### 7.4. Шаринг отчёта по ссылке
 - `share.ts` кодирует `FairEvent` в URL: JSON → gzip (CompressionStream) → base64url → `/share#{encoded}`.
-- `SharedReportView.vue` декодирует данные из URL и отображает отчёт в режиме просмотра (без сохранения в localStorage).
+- `SharedReportView.vue` декодирует данные из URL и отображает отчёт в режиме просмотра. Кнопка «Сохранить к себе» добавляет мероприятие в Firestore текущего пользователя.
 - Нормализация legacy-полей применяется при декодировании.
 
 ---
@@ -280,7 +284,7 @@ export interface Settlement {
   - Если роут защищённый и пользователь не вошёл → редирект на `/login?redirect=<исходный_путь>`.
   - Если пользователь вошёл и открывает `/login` или `/register` → редирект на `/` (или на `redirect`).
 - `/share` остаётся доступным без входа, чтобы можно было делиться отчётом.
-- На данном этапе данные мероприятий продолжают храниться в `localStorage` и не привязаны к `uid` пользователя (привязка и синхронизация — будущие доработки).
+- **Привязка данных к пользователю:** в `main.ts` отслеживается `authStore.user`. При входе вызывается `eventsStore.bindUser(uid)` (подписка `onSnapshot`), при выходе — `eventsStore.unbind()` (отписка и очистка локального состояния). Данные разных пользователей не смешиваются.
 
 ---
 
@@ -360,9 +364,10 @@ export interface Settlement {
 ## 10. Состояние (Pinia)
 
 ### `stores/events.ts`
-- Состояние: `events: FairEvent[]`, `schemaVersion`.
-- Действия: `createEvent`, `updateEvent`, `deleteEvent`; `addParticipant`, `setPaidBy`, `renameParticipant`, `removeParticipant`; `addExpense`, `updateExpense`, `removeExpense`; `exportState`, `importState(payload, mode)`, `clearAll`.
-- Каждая мутация обновляет `updatedAt` мероприятия и сохраняет в localStorage.
+- Состояние: `events: FairEvent[]`, `schemaVersion`, `ready: boolean` (загружена ли облачная коллекция), `lastError: string | null`.
+- Привязка к пользователю: `bindUser(uid)` подписывается на `users/{uid}/events` через `onSnapshot` (первый снапшот выставляет `ready = true`); `unbind()` отписывается, очищает `events` и сбрасывает `ready`. Вызываются из `main.ts` по изменению `authStore.user`.
+- Действия: `createEvent`, `updateEvent`, `deleteEvent`, `duplicateEvent`; `addParticipant`, `setPaidBy`, `renameParticipant`, `removeParticipant`; `addExpense`, `updateExpense`, `removeExpense`; `exportState`, `exportPayload`, `importState(state, mode)`, `importSingleEvent`, `clearAll`.
+- Каждая мутация обновляет `updatedAt` мероприятия, меняет локальное состояние оптимистично и пишет изменённый документ в Firestore (`saveEventDoc`/`deleteEventDoc`); `importState`/`clearAll` используют пакетные операции. `onSnapshot` поддерживает `events` в актуальном состоянии (источник истины — Firestore).
 
 ### `stores/settings.ts`
 - `theme: 'dark' | 'light'` (по умолчанию `'dark'`), персист в localStorage.
@@ -372,4 +377,4 @@ export interface Settlement {
 - Геттеры: `isAuthenticated`, `displayName` (`user.displayName || user.email`).
 - Инициализация: подписка `onAuthStateChanged(auth, ...)` обновляет `user` и выставляет `ready = true` (вызывается один раз в `main.ts`).
 - Действия (обёртки над `lib/auth.ts`): `loginWithEmail(email, password)`, `registerWithEmail(email, password, displayName?)`, `loginWithGoogle()`, `logout()`. При регистрации с указанным `displayName` вызывается `updateProfile`. Ошибки Firebase пробрасываются для обработки во вьюх. После `updateProfile` реактивность `displayName` принудительно обновляется (`triggerRef`).
-- На данном этапе стор не влияет на `events` (данные общие в localStorage).
+- При изменении `user` (в `main.ts`) запускается привязка/отписка стора `events` к данным пользователя в Firestore.

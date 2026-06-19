@@ -10,22 +10,69 @@ import {
   type PersistedState,
   SCHEMA_VERSION,
 } from '@/types/models'
-import { loadState, saveState, clearStorage } from '@/lib/storage'
+import {
+  subscribeEvents,
+  saveEventDoc,
+  deleteEventDoc,
+  saveEventsBatch,
+  deleteAllEvents,
+} from '@/lib/firestore'
+import type { Unsubscribe } from 'firebase/firestore'
 import { buildExportFile, exportStateToJson, newId } from '@/lib/io'
 
 export const useEventsStore = defineStore('events', () => {
-  const initial = loadState()
-  const events = ref<FairEvent[]>(initial.events)
-  const schemaVersion = ref<number>(initial.schemaVersion ?? SCHEMA_VERSION)
+  const events = ref<FairEvent[]>([])
+  const schemaVersion = ref<number>(SCHEMA_VERSION)
   const lastError = ref<string | null>(null)
+  // Загружена ли облачная коллекция текущего пользователя (получен первый снапшот).
+  const ready = ref<boolean>(false)
+
+  // Привязка к пользователю Firestore.
+  let boundUid: string | null = null
+  let unsubscribe: Unsubscribe | null = null
 
   function snapshot(): PersistedState {
     return { schemaVersion: schemaVersion.value, events: events.value }
   }
 
-  function persist(): void {
-    const ok = saveState(snapshot())
-    lastError.value = ok ? null : 'Не удалось сохранить данные (возможно, хранилище переполнено).'
+  /** Подписывается на мероприятия пользователя. Вызывается при входе (из main.ts). */
+  function bindUser(uid: string): void {
+    if (boundUid === uid) return
+    unbind()
+    boundUid = uid
+    ready.value = false
+    unsubscribe = subscribeEvents(
+      uid,
+      (list) => {
+        events.value = list
+        ready.value = true
+        lastError.value = null
+      },
+      (err) => {
+        console.error('Не удалось загрузить мероприятия из Firestore:', err)
+        lastError.value = 'Не удалось загрузить данные из облака.'
+        ready.value = true
+      },
+    )
+  }
+
+  /** Отписывается и очищает локальное состояние. Вызывается при выходе. */
+  function unbind(): void {
+    unsubscribe?.()
+    unsubscribe = null
+    boundUid = null
+    events.value = []
+    ready.value = false
+    lastError.value = null
+  }
+
+  /** Записывает один документ мероприятия в Firestore (fire-and-forget c обработкой ошибок). */
+  function persistEvent(event: FairEvent): void {
+    if (!boundUid) return
+    saveEventDoc(boundUid, event).catch((err) => {
+      console.error('Не удалось сохранить мероприятие в Firestore:', err)
+      lastError.value = 'Не удалось сохранить данные в облаке.'
+    })
   }
 
   function nowIso(): string {
@@ -38,7 +85,7 @@ export const useEventsStore = defineStore('events', () => {
 
   function touch(event: FairEvent): void {
     event.updatedAt = nowIso()
-    persist()
+    persistEvent(event)
   }
 
   // --- Мероприятия ---
@@ -58,7 +105,7 @@ export const useEventsStore = defineStore('events', () => {
       updatedAt: nowIso(),
     }
     events.value.push(event)
-    persist()
+    persistEvent(event)
     return event
   }
 
@@ -78,7 +125,12 @@ export const useEventsStore = defineStore('events', () => {
     const idx = events.value.findIndex((e) => e.id === id)
     if (idx >= 0) {
       events.value.splice(idx, 1)
-      persist()
+      if (boundUid) {
+        deleteEventDoc(boundUid, id).catch((err) => {
+          console.error('Не удалось удалить мероприятие в Firestore:', err)
+          lastError.value = 'Не удалось удалить данные в облаке.'
+        })
+      }
     }
   }
 
@@ -107,7 +159,7 @@ export const useEventsStore = defineStore('events', () => {
       ex.payerId = ex.payerId ? (pMap.get(ex.payerId) ?? null) : null
     })
     events.value.push(clone)
-    persist()
+    persistEvent(clone)
     return clone
   }
 
@@ -223,33 +275,57 @@ export const useEventsStore = defineStore('events', () => {
     if (mode === 'replace') {
       events.value = state.events
       schemaVersion.value = state.schemaVersion
+      if (boundUid) {
+        const uid = boundUid
+        deleteAllEvents(uid)
+          .then(() => saveEventsBatch(uid, state.events))
+          .catch((err) => {
+            console.error('Не удалось импортировать данные в Firestore:', err)
+            lastError.value = 'Не удалось сохранить импорт в облаке.'
+          })
+      }
     } else {
       const existingIds = new Set(events.value.map((e) => e.id))
+      const added: FairEvent[] = []
       for (const ev of state.events) {
         if (existingIds.has(ev.id)) ev.id = newId()
         events.value.push(ev)
+        added.push(ev)
+      }
+      if (boundUid) {
+        saveEventsBatch(boundUid, added).catch((err) => {
+          console.error('Не удалось импортировать данные в Firestore:', err)
+          lastError.value = 'Не удалось сохранить импорт в облаке.'
+        })
       }
     }
-    persist()
   }
 
   function importSingleEvent(event: FairEvent): void {
     const existingIds = new Set(events.value.map((e) => e.id))
     if (existingIds.has(event.id)) event = { ...event, id: newId() }
     events.value.push(event)
-    persist()
+    persistEvent(event)
   }
 
   function clearAll(): void {
     events.value = []
     schemaVersion.value = SCHEMA_VERSION
-    clearStorage()
+    if (boundUid) {
+      deleteAllEvents(boundUid).catch((err) => {
+        console.error('Не удалось очистить данные в Firestore:', err)
+        lastError.value = 'Не удалось очистить данные в облаке.'
+      })
+    }
   }
 
   return {
     events,
     schemaVersion,
     lastError,
+    ready,
+    bindUser,
+    unbind,
     getEventById,
     createEvent,
     updateEvent,
