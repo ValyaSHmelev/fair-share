@@ -4,6 +4,7 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  updateProfile,
   type User,
 } from 'firebase/auth'
 import { auth } from './firebase'
@@ -49,9 +50,17 @@ export async function loginWithEmail(email: string, password: string): Promise<U
   }
 }
 
-export async function registerWithEmail(email: string, password: string): Promise<User> {
+export async function registerWithEmail(
+  email: string,
+  password: string,
+  displayName?: string,
+): Promise<User> {
   try {
     const cred = await createUserWithEmailAndPassword(auth, email, password)
+    const name = displayName?.trim()
+    if (name) {
+      await updateProfile(cred.user, { displayName: name })
+    }
     return cred.user
   } catch (err) {
     throw toAuthError(err)

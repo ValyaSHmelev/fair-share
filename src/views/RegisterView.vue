@@ -13,6 +13,8 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 
+const firstName = ref('')
+const lastName = ref('')
 const email = ref('')
 const password = ref('')
 const confirm = ref('')
@@ -24,10 +26,14 @@ const redirectTarget = computed(() => {
   return typeof r === 'string' && r.startsWith('/') ? r : '/'
 })
 
+const fullName = computed(() => `${firstName.value.trim()} ${lastName.value.trim()}`.trim())
+const nameValid = computed(() => firstName.value.trim().length > 0 && lastName.value.trim().length > 0)
 const emailValid = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim()))
 const passwordValid = computed(() => password.value.length >= 6)
 const passwordsMatch = computed(() => password.value === confirm.value)
-const canSubmit = computed(() => emailValid.value && passwordValid.value && passwordsMatch.value)
+const canSubmit = computed(
+  () => nameValid.value && emailValid.value && passwordValid.value && passwordsMatch.value,
+)
 
 function notifyError(err: unknown) {
   const message = err instanceof AuthError ? err.message : 'Не удалось зарегистрироваться. Попробуйте ещё раз.'
@@ -36,6 +42,10 @@ function notifyError(err: unknown) {
 
 async function submit() {
   if (loading.value) return
+  if (!nameValid.value) {
+    toast.add({ severity: 'warn', summary: 'Укажите имя и фамилию', life: 3000 })
+    return
+  }
   if (!emailValid.value) {
     toast.add({ severity: 'warn', summary: 'Проверьте email', life: 3000 })
     return
@@ -50,7 +60,7 @@ async function submit() {
   }
   loading.value = true
   try {
-    await auth.registerWithEmail(email.value.trim(), password.value)
+    await auth.registerWithEmail(email.value.trim(), password.value, fullName.value)
     router.replace(redirectTarget.value)
   } catch (err) {
     notifyError(err)
@@ -89,6 +99,28 @@ const loginLink = computed(() => ({
       <p class="fs-muted auth-subtitle">Создайте аккаунт, чтобы начать.</p>
 
       <form class="auth-form" @submit.prevent="submit">
+        <div class="name-row">
+          <div class="field">
+            <label for="reg-first-name">Имя</label>
+            <InputText
+              id="reg-first-name"
+              v-model="firstName"
+              autocomplete="given-name"
+              placeholder="Иван"
+              fluid
+            />
+          </div>
+          <div class="field">
+            <label for="reg-last-name">Фамилия</label>
+            <InputText
+              id="reg-last-name"
+              v-model="lastName"
+              autocomplete="family-name"
+              placeholder="Иванов"
+              fluid
+            />
+          </div>
+        </div>
         <div class="field">
           <label for="reg-email">Email</label>
           <InputText
@@ -204,6 +236,11 @@ const loginLink = computed(() => ({
   display: grid;
   gap: 1rem;
   margin-bottom: 1rem;
+}
+.name-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
 }
 .field {
   display: grid;

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, triggerRef } from 'vue'
 import { onAuthStateChanged, type User } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import * as authApi from '@/lib/auth'
@@ -34,8 +34,13 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = await authApi.loginWithEmail(email, password)
   }
 
-  async function registerWithEmail(email: string, password: string): Promise<void> {
-    user.value = await authApi.registerWithEmail(email, password)
+  async function registerWithEmail(
+    email: string,
+    password: string,
+    displayName?: string,
+  ): Promise<void> {
+    user.value = await authApi.registerWithEmail(email, password, displayName)
+    triggerRef(user)
   }
 
   async function loginWithGoogle(): Promise<void> {

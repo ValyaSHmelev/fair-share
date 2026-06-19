@@ -348,11 +348,11 @@ export interface Settlement {
 
 ### 9.10. Регистрация (`RegisterView`)
 - Аналогичная карточка без общей шапки.
-- Поля: **email**, **пароль** (`Password` с индикатором силы), **повтор пароля**.
-- Кнопка **«Зарегистрироваться»** — `createUserWithEmailAndPassword`.
-- Кнопка **«Регистрация через Google»** — `signInWithPopup` с `GoogleAuthProvider`.
+- Поля: **имя**, **фамилия** (в одной строке), **email**, **пароль** (`Password` с индикатором силы), **повтор пароля**.
+- Кнопка **«Зарегистрироваться»** — `createUserWithEmailAndPassword`, затем `updateProfile` устанавливает `displayName = "Имя Фамилия"`, чтобы в интерфейсе (меню пользователя) отображалось имя, а не email (единообразно с входом через Google).
+- Кнопка **«Регистрация через Google»** — `signInWithPopup` с `GoogleAuthProvider` (имя приходит из Google-профиля).
 - Ссылка **«Уже есть аккаунт? Войти»** → `/login`.
-- Валидация: корректный email, пароль ≥ 6 символов (требование Firebase), совпадение паролей. Ошибки (`email-already-in-use` и др.) — через `Toast`.
+- Валидация: имя и фамилия непустые, корректный email, пароль ≥ 6 символов (требование Firebase), совпадение паролей. Ошибки (`email-already-in-use` и др.) — через `Toast`.
 - После успешной регистрации пользователь автоматически авторизован → редирект на `/`.
 
 ---
@@ -371,5 +371,5 @@ export interface Settlement {
 - Состояние: `user: User | null` (текущий пользователь Firebase), `ready: boolean` (завершена ли первичная проверка сессии).
 - Геттеры: `isAuthenticated`, `displayName` (`user.displayName || user.email`).
 - Инициализация: подписка `onAuthStateChanged(auth, ...)` обновляет `user` и выставляет `ready = true` (вызывается один раз в `main.ts`).
-- Действия (обёртки над `lib/auth.ts`): `loginWithEmail(email, password)`, `registerWithEmail(email, password)`, `loginWithGoogle()`, `logout()`. Возвращают ошибки Firebase для обработки во вьюх.
+- Действия (обёртки над `lib/auth.ts`): `loginWithEmail(email, password)`, `registerWithEmail(email, password, displayName?)`, `loginWithGoogle()`, `logout()`. При регистрации с указанным `displayName` вызывается `updateProfile`. Ошибки Firebase пробрасываются для обработки во вьюх. После `updateProfile` реактивность `displayName` принудительно обновляется (`triggerRef`).
 - На данном этапе стор не влияет на `events` (данные общие в localStorage).
