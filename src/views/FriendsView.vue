@@ -5,6 +5,7 @@ import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
+import InputMask from 'primevue/inputmask'
 import Select from 'primevue/select'
 import ProgressSpinner from 'primevue/progressspinner'
 import EmptyState from '@/components/EmptyState.vue'
@@ -158,7 +159,13 @@ function removeFriend(f: Friend) {
         </div>
         <div class="field">
           <label for="f-phone">Номер для перевода по СБП</label>
-          <InputText id="f-phone" v-model="form.sbpPhone" placeholder="+7 900 000-00-00" fluid />
+          <InputMask
+            id="f-phone"
+            v-model="form.sbpPhone"
+            mask="+9 999 999-99-99"
+            placeholder="+7 900 000-00-00"
+            fluid
+          />
         </div>
         <div class="field">
           <label for="f-bank">Банк</label>
@@ -168,7 +175,6 @@ function removeFriend(f: Friend) {
             :options="bankOptions"
             optionLabel="label"
             optionValue="value"
-            editable
             placeholder="Выберите банк"
             fluid
           />

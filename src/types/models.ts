@@ -42,6 +42,7 @@ export const POPULAR_BANKS: string[] = [
   'ВТБ',
   'Газпром',
   'Озон Банк',
+  'Другой',
 ]
 
 /**

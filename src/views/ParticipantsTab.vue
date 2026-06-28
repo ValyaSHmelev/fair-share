@@ -6,6 +6,7 @@ import Button from 'primevue/button'
 import Checkbox from 'primevue/checkbox'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
+import InputMask from 'primevue/inputmask'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import EmptyState from '@/components/EmptyState.vue'
@@ -250,9 +251,10 @@ function addSelectedFriends() {
         </div>
         <div class="field">
           <label for="p-phone">Номер для перевода по СБП</label>
-          <InputText
+          <InputMask
             id="p-phone"
             v-model="form.sbpPhone"
+            mask="+9 999 999-99-99"
             placeholder="+7 900 000-00-00"
             fluid
           />
@@ -265,8 +267,7 @@ function addSelectedFriends() {
             :options="bankOptions"
             optionLabel="label"
             optionValue="value"
-            editable
-            placeholder="Выберите или впишите банк"
+            placeholder="Выберите банк"
             fluid
           />
         </div>
