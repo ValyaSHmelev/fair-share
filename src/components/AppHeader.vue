@@ -25,6 +25,11 @@ const userMenuItems = ref<MenuItem[]>([
     command: () => router.push({ name: 'profile' }),
   },
   {
+    label: 'Друзья',
+    icon: 'pi pi-users',
+    command: () => router.push({ name: 'friends' }),
+  },
+  {
     label: 'Выйти',
     icon: 'pi pi-sign-out',
     command: () => void handleLogout(),

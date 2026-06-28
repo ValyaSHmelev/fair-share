@@ -3,16 +3,19 @@ import { computed, reactive, ref } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import Button from 'primevue/button'
+import Checkbox from 'primevue/checkbox'
 import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import EmptyState from '@/components/EmptyState.vue'
 import { useEventsStore } from '@/stores/events'
-import { POPULAR_BANKS, type Participant } from '@/types/models'
+import { useFriendsStore } from '@/stores/friends'
+import { POPULAR_BANKS, type Friend, type Participant } from '@/types/models'
 
 const props = defineProps<{ id: string }>()
 const store = useEventsStore()
+const friendsStore = useFriendsStore()
 const confirm = useConfirm()
 const toast = useToast()
 
@@ -107,6 +110,45 @@ function removeParticipant(p: Participant) {
     },
   })
 }
+
+// --- Выбор из друзей ---
+const friendsPickerVisible = ref(false)
+const selectedFriendIds = ref<string[]>([])
+
+const friends = computed(() => friendsStore.friends)
+
+// Имена уже добавленных участников — чтобы подсказать, кто из друзей уже в мероприятии.
+const participantNames = computed(
+  () => new Set((event.value?.participants ?? []).map((p) => p.name.toLowerCase())),
+)
+
+function isFriendInEvent(f: Friend): boolean {
+  return participantNames.value.has(f.name.toLowerCase())
+}
+
+function openFriendsPicker() {
+  selectedFriendIds.value = []
+  friendsPickerVisible.value = true
+}
+
+function addSelectedFriends() {
+  const chosen = friends.value.filter((f) => selectedFriendIds.value.includes(f.id))
+  for (const f of chosen) {
+    store.addParticipant(props.id, f.name, null, {
+      sbpPhone: f.sbpPhone,
+      bank: f.bank,
+      recipient: f.recipient,
+    })
+  }
+  friendsPickerVisible.value = false
+  if (chosen.length) {
+    toast.add({
+      severity: 'success',
+      summary: chosen.length === 1 ? 'Друг добавлен' : `Добавлено друзей: ${chosen.length}`,
+      life: 2000,
+    })
+  }
+}
 </script>
 
 <template>
@@ -114,6 +156,13 @@ function removeParticipant(p: Participant) {
     <div class="fs-row fs-row-wrap">
       <h2 class="fs-section-title" style="margin: 0">Участники</h2>
       <div class="fs-spacer" />
+      <Button
+        label="Выбрать из друзей"
+        icon="pi pi-users"
+        severity="secondary"
+        outlined
+        @click="openFriendsPicker"
+      />
       <Button label="Добавить участника" icon="pi pi-plus" @click="openCreate" />
     </div>
 
@@ -237,6 +286,53 @@ function removeParticipant(p: Participant) {
         <Button :label="editingId ? 'Сохранить' : 'Добавить'" icon="pi pi-check" @click="submit" />
       </template>
     </Dialog>
+
+    <Dialog
+      v-model:visible="friendsPickerVisible"
+      header="Выбрать из друзей"
+      modal
+      :style="{ width: '32rem', maxWidth: '95vw' }"
+    >
+      <EmptyState
+        v-if="!friends.length"
+        icon="pi-users"
+        title="Список друзей пуст"
+        description="Сначала добавьте друзей в разделе «Друзья», чтобы выбирать их здесь."
+      >
+        <Button
+          label="Перейти к друзьям"
+          icon="pi pi-arrow-right"
+          @click="$router.push({ name: 'friends' })"
+        />
+      </EmptyState>
+
+      <ul v-else class="friends-pick-list">
+        <li v-for="f in friends" :key="f.id" class="friends-pick-item">
+          <Checkbox v-model="selectedFriendIds" :inputId="`fr-${f.id}`" :value="f.id" />
+          <label :for="`fr-${f.id}`" class="friends-pick-label">
+            <span class="friends-pick-name">
+              {{ f.name }}
+              <Tag v-if="isFriendInEvent(f)" value="уже добавлен" severity="warn" />
+            </span>
+            <span v-if="f.sbpPhone || f.bank || f.recipient" class="friends-pick-payment fs-muted">
+              <span v-if="f.sbpPhone"><i class="pi pi-phone" /> {{ f.sbpPhone }}</span>
+              <span v-if="f.bank"><i class="pi pi-building" /> {{ f.bank }}</span>
+              <span v-if="f.recipient"><i class="pi pi-user" /> {{ f.recipient }}</span>
+            </span>
+          </label>
+        </li>
+      </ul>
+
+      <template #footer>
+        <Button label="Отмена" severity="secondary" text @click="friendsPickerVisible = false" />
+        <Button
+          :label="`Добавить${selectedFriendIds.length ? ` (${selectedFriendIds.length})` : ''}`"
+          icon="pi pi-check"
+          :disabled="!selectedFriendIds.length"
+          @click="addSelectedFriends"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -297,5 +393,44 @@ function removeParticipant(p: Participant) {
 }
 .req {
   color: var(--p-red-400, #ef4444);
+}
+.friends-pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.friends-pick-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.55rem;
+}
+.friends-pick-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+.friends-pick-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+.friends-pick-payment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.8rem;
+  font-size: 0.82rem;
+}
+.friends-pick-payment i {
+  margin-right: 0.2rem;
 }
 </style>

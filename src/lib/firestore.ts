@@ -10,7 +10,13 @@ import {
   type Unsubscribe,
 } from 'firebase/firestore'
 import { db } from './firebase'
-import { createEmptyProfile, type FairEvent, type ID, type UserProfile } from '@/types/models'
+import {
+  createEmptyProfile,
+  type FairEvent,
+  type Friend,
+  type ID,
+  type UserProfile,
+} from '@/types/models'
 
 /** Ссылка на коллекцию мероприятий конкретного пользователя. */
 function eventsCol(uid: string) {
@@ -19,6 +25,15 @@ function eventsCol(uid: string) {
 
 function eventDoc(uid: string, eventId: ID) {
   return doc(db, 'users', uid, 'events', eventId)
+}
+
+/** Ссылка на коллекцию друзей конкретного пользователя. */
+function friendsCol(uid: string) {
+  return collection(db, 'users', uid, 'friends')
+}
+
+function friendDoc(uid: string, friendId: ID) {
+  return doc(db, 'users', uid, 'friends', friendId)
 }
 
 /** Ссылка на документ пользователя (хранит платёжный профиль). */
@@ -139,4 +154,45 @@ export async function deleteAllEvents(uid: string): Promise<void> {
   const batch = writeBatch(db)
   snap.docs.forEach((d) => batch.delete(d.ref))
   await batch.commit()
+}
+
+// --- Друзья ---
+
+/** Приводит документ друга к актуальной схеме, подставляя значения по умолчанию. */
+function normalizeFriend(raw: Partial<Friend> & { id: ID }): Friend {
+  return {
+    id: raw.id,
+    name: typeof raw.name === 'string' ? raw.name : '',
+    sbpPhone: typeof raw.sbpPhone === 'string' ? raw.sbpPhone : '',
+    bank: typeof raw.bank === 'string' ? raw.bank : '',
+    recipient: typeof raw.recipient === 'string' ? raw.recipient : '',
+    createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : '',
+  }
+}
+
+/** Подписывается на список друзей пользователя в реальном времени. Возвращает функцию отписки. */
+export function subscribeFriends(
+  uid: string,
+  onData: (friends: Friend[]) => void,
+  onError: (err: Error) => void,
+): Unsubscribe {
+  return onSnapshot(
+    friendsCol(uid),
+    (snap) => {
+      const friends = snap.docs.map((d) => normalizeFriend(d.data() as Partial<Friend> & { id: ID }))
+      friends.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      onData(friends)
+    },
+    (err) => onError(err),
+  )
+}
+
+/** Создаёт или перезаписывает документ друга. */
+export function saveFriendDoc(uid: string, friend: Friend): Promise<void> {
+  return setDoc(friendDoc(uid, friend.id), normalizeFriend(friend))
+}
+
+/** Удаляет документ друга. */
+export function deleteFriendDoc(uid: string, friendId: ID): Promise<void> {
+  return deleteDoc(friendDoc(uid, friendId))
 }

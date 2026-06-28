@@ -60,6 +60,7 @@ fair-share/
    │  └─ index.ts
    ├─ stores/
    │  ├─ events.ts            # Pinia-стор мероприятий (CRUD, персист)
+   │  ├─ friends.ts           # Pinia-стор друзей (глобальный список, CRUD, персист)
    │  ├─ auth.ts              # Pinia-стор авторизации (текущий пользователь, статус)
    │  └─ settings.ts          # Pinia-стор настроек (тема)
    ├─ types/
@@ -85,6 +86,7 @@ fair-share/
       ├─ ReportTab.vue        # вкладка «Отчёт»
       ├─ SharedReportView.vue # просмотр отчёта по shared-ссылке
       ├─ ProfileView.vue      # профиль пользователя (имя, реквизиты для перевода)
+      ├─ FriendsView.vue      # глобальный список друзей (имя + реквизиты)
       ├─ SettingsView.vue     # экспорт/импорт, тема
       ├─ LoginView.vue        # вход (email/password, Google)
       ├─ RegisterView.vue     # регистрация (email/password, Google)
@@ -272,6 +274,13 @@ export interface Settlement {
 - **Тип `UserProfile`:** `paymentMethod` (`'sbp' | 'card'`, по умолчанию `sbp`), `phone`, `bank` (для СБП), `cardNumber` (для карты), `recipient` (отображаемое имя получателя).
 - Отображаемое имя (`displayName`) хранится в Firebase Auth, а не в профиле.
 
+### 7.6. Друзья
+- Глобальный (на уровне пользователя) список друзей хранится в подколлекции `users/{uid}/friends/{friendId}` — один документ на друга (`Friend`).
+- **Слой доступа:** `src/lib/firestore.ts` — `subscribeFriends`, `saveFriendDoc`, `deleteFriendDoc` (с нормализацией полей и значениями по умолчанию).
+- **Тип `Friend`:** `id`, `name`, `sbpPhone`, `bank`, `recipient`, `createdAt`. Поля `paidById` нет — «кто платит» настраивается уже внутри мероприятия.
+- **Синхронизация:** стор `friends` подписывается на коллекцию при входе через `onSnapshot`; сортировка по имени.
+- Используется в `ParticipantsTab` кнопкой «Выбрать из друзей»: выбранные друзья копируются в участников мероприятия (имя + реквизиты, `paidById = null`).
+
 ---
 
 ## 8. Маршрутизация
@@ -284,6 +293,7 @@ export interface Settlement {
 | `/share` | `SharedReportView` | публичный | Legacy: просмотр отчёта по старой ссылке `#{encoded}` |
 | `/` | `EventsListView` | защищённый | Список мероприятий |
 | `/profile` | `ProfileView` | защищённый | Профиль пользователя (имя, реквизиты для перевода) |
+| `/friends` | `FriendsView` | защищённый | Глобальный список друзей |
 | `/events/:id` | `EventDetailView` | защищённый | Карточка мероприятия (редирект на `participants`) |
 | `/events/:id/participants` | `ParticipantsTab` | защищённый | Участники |
 | `/events/:id/expenses` | `ExpensesTab` | защищённый | Позиции расходов |
@@ -333,7 +343,14 @@ export interface Settlement {
   - **Получатель** (`recipient`) — как имя высвечивается в приложении банка; опционально.
 - Список участников показывает имя, тег «кто платит» и реквизиты (если заполнены); кнопки «Редактировать»/«Удалить» (подтверждение + пересчёт отчёта).
 - Реквизиты хранятся на самом участнике (профиль пользователя для этого не используется).
+- **Кнопка «Выбрать из друзей»** открывает модалку со списком друзей (чекбоксы, реквизиты, тег «уже добавлен» при совпадении имени). Выбранные добавляются в участников (имя + реквизиты, `paidById = null`). Если друзей нет — пустое состояние со ссылкой в раздел «Друзья».
 - Тёзки допустимы.
+
+### 9.4a. Друзья (`FriendsView`, маршрут `/friends`)
+- Глобальный список друзей пользователя; доступен из меню пользователя в шапке.
+- Добавление и редактирование — через **модальное окно**. Поля: имя (обязательно), номер СБП, банк (редактируемый `Select` с `POPULAR_BANKS`), получатель. Поля «кто платит» нет.
+- Список с реквизитами; кнопки «Редактировать»/«Удалить» (подтверждение). `EmptyState` при пустом списке.
+- Данные реактивно синхронизируются из стора `friends` (Firestore `onSnapshot`).
 
 ### 9.5. Расходы (`ExpensesTab`)
 - Кнопка «Добавить позицию». Поля: наименование, цена, **плательщик** (обязательно), участники (`ParticipantPicker`).
@@ -400,6 +417,11 @@ export interface Settlement {
 - Действия: `createEvent`, `updateEvent`, `deleteEvent`, `duplicateEvent`; `addParticipant` (с реквизитами), `updateParticipant`, `setPaidBy`, `renameParticipant`, `removeParticipant`; `addExpense`, `updateExpense`, `removeExpense`; `exportState`, `exportPayload`, `importState(state, mode)`, `importSingleEvent`, `clearAll`.
 - Каждая мутация обновляет `updatedAt` мероприятия, меняет локальное состояние оптимистично и пишет изменённый документ в Firestore (`saveEventDoc`/`deleteEventDoc`); `importState`/`clearAll` используют пакетные операции. `onSnapshot` поддерживает `events` в актуальном состоянии (источник истины — Firestore).
 
+### `stores/friends.ts`
+- Состояние: `friends: Friend[]`, `ready: boolean`, `lastError: string | null`.
+- Привязка к пользователю: `bindUser(uid)` подписывается на `users/{uid}/friends` через `onSnapshot`; `unbind()` отписывается и очищает состояние. Вызываются из `main.ts` по изменению `authStore.user`.
+- Действия: `getFriendById`, `addFriend`, `updateFriend`, `removeFriend`. Каждая мутация оптимистично меняет локальное состояние и пишет/удаляет документ в Firestore.
+
 ### `stores/settings.ts`
 - `theme: 'dark' | 'light'` (по умолчанию `'dark'`), персист в localStorage.
 
@@ -408,4 +430,4 @@ export interface Settlement {
 - Геттеры: `isAuthenticated`, `displayName` (`user.displayName || user.email`).
 - Инициализация: подписка `onAuthStateChanged(auth, ...)` обновляет `user` и выставляет `ready = true` (вызывается один раз в `main.ts`).
 - Действия (обёртки над `lib/auth.ts`): `loginWithEmail(email, password)`, `registerWithEmail(email, password, displayName?)`, `loginWithGoogle()`, `updateDisplayName(name)`, `logout()`. При регистрации с указанным `displayName` вызывается `updateProfile`. Ошибки Firebase пробрасываются для обработки во вьюх. После `updateProfile` реактивность `displayName` принудительно обновляется (`triggerRef`).
-- При изменении `user` (в `main.ts`) запускается привязка/отписка стора `events` к данным пользователя в Firestore.
+- При изменении `user` (в `main.ts`) запускается привязка/отписка сторов `events` и `friends` к данным пользователя в Firestore.

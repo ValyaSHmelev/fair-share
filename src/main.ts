@@ -11,6 +11,7 @@ import { router } from './router'
 import { registerSW } from 'virtual:pwa-register'
 import { useAuthStore } from '@/stores/auth'
 import { useEventsStore } from '@/stores/events'
+import { useFriendsStore } from '@/stores/friends'
 
 import 'primeicons/primeicons.css'
 import './assets/styles/main.css'
@@ -24,12 +25,18 @@ app.use(router)
 // Привязываем облачные данные мероприятий к текущему пользователю.
 const authStore = useAuthStore(pinia)
 const eventsStore = useEventsStore(pinia)
+const friendsStore = useFriendsStore(pinia)
 authStore.init()
 watch(
   () => authStore.user,
   (user) => {
-    if (user) eventsStore.bindUser(user.uid)
-    else eventsStore.unbind()
+    if (user) {
+      eventsStore.bindUser(user.uid)
+      friendsStore.bindUser(user.uid)
+    } else {
+      eventsStore.unbind()
+      friendsStore.unbind()
+    }
   },
   { immediate: true },
 )
