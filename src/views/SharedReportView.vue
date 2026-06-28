@@ -1,29 +1,21 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useToast } from 'primevue/usetoast'
+import { useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import Message from 'primevue/message'
 import ProgressSpinner from 'primevue/progressspinner'
 import { getPublicEvent } from '@/lib/firestore'
 import { buildReport } from '@/lib/calc'
 import { formatMoney, formatDate } from '@/lib/format'
-import { useEventsStore } from '@/stores/events'
-import { useAuthStore } from '@/stores/auth'
 import type { FairEvent } from '@/types/models'
 
 const props = defineProps<{ uid?: string; eventId?: string }>()
 
 const router = useRouter()
-const route = useRoute()
-const toast = useToast()
-const store = useEventsStore()
-const auth = useAuthStore()
 
 const event = ref<FairEvent | null>(null)
 const error = ref<string | null>(null)
 const loading = ref(true)
-const importing = ref(false)
 
 onMounted(async () => {
   if (!props.uid || !props.eventId) {
@@ -71,24 +63,6 @@ function money(value: number) {
   return formatMoney(value, currency.value)
 }
 
-async function importEvent() {
-  if (!event.value) return
-  // Импорт сохраняет данные в облако — требуется вход в аккаунт.
-  if (!auth.isAuthenticated) {
-    await router.push({ name: 'login', query: { redirect: route.fullPath } })
-    return
-  }
-  importing.value = true
-  try {
-    store.importSingleEvent(event.value)
-    toast.add({ severity: 'success', summary: 'Мероприятие добавлено', life: 2000 })
-    await router.push({ name: 'events' })
-  } catch {
-    toast.add({ severity: 'error', summary: 'Ошибка импорта', life: 3000 })
-  } finally {
-    importing.value = false
-  }
-}
 </script>
 
 <template>
@@ -132,12 +106,6 @@ async function importEvent() {
             <h1 class="event-title">{{ event.name }}</h1>
             <p v-if="event.date" class="event-date fs-muted">{{ formatDate(event.date) }}</p>
           </div>
-          <Button
-            label="Добавить к себе"
-            icon="pi pi-download"
-            :loading="importing"
-            @click="importEvent"
-          />
         </div>
 
         <!-- Сводка -->
@@ -266,20 +234,6 @@ async function importEvent() {
           </ul>
         </section>
 
-        <!-- Нижний баннер -->
-        <div class="share-footer-banner">
-          <span class="fs-muted">Создано в&nbsp;</span>
-          <strong>FairShare</strong>
-          <span class="fs-muted">&nbsp;— делите расходы честно</span>
-          <Button
-            label="Попробовать"
-            icon="pi pi-external-link"
-            severity="secondary"
-            size="small"
-            style="margin-left: 1rem"
-            @click="router.push('/')"
-          />
-        </div>
       </div>
     </main>
   </div>
