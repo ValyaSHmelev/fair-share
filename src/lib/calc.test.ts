@@ -47,7 +47,7 @@ function makeEvent(): FairEvent {
     name: 'Шашлыки',
     date: null,
     currency: 'RUB',
-    participants: ids.map((id) => ({ id, name: id, paidById: null })),
+    participants: ids.map((id) => ({ id, name: id, paidById: null, sbpPhone: '', bank: '', recipient: '' })),
     expenses: [
       {
         id: 'e1',

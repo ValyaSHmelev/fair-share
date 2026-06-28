@@ -52,8 +52,19 @@ const nameById = computed(
   () => new Map((event.value?.participants ?? []).map((p) => [p.id, p.name])),
 )
 
+const participantById = computed(
+  () => new Map((event.value?.participants ?? []).map((p) => [p.id, p])),
+)
+
 function participantName(id: string): string {
   return nameById.value.get(id) ?? '?'
+}
+
+function paymentInfo(id: string): { sbpPhone: string; bank: string; recipient: string } | null {
+  const p = participantById.value.get(id)
+  if (!p) return null
+  if (!p.sbpPhone && !p.bank && !p.recipient) return null
+  return { sbpPhone: p.sbpPhone, bank: p.bank, recipient: p.recipient }
 }
 
 function money(value: number) {
@@ -233,11 +244,24 @@ async function importEvent() {
           </p>
           <ul v-else class="transfer-list">
             <li v-for="(s, i) in report.settlements" :key="i" class="transfer-row">
-              <span class="transfer-from">{{ participantName(s.fromId) }}</span>
-              <i class="pi pi-arrow-right transfer-arrow" />
-              <span class="transfer-to">{{ participantName(s.toId) }}</span>
-              <div class="share-spacer" />
-              <span class="transfer-amount">{{ money(s.amount) }}</span>
+              <div class="transfer-head">
+                <span class="transfer-from">{{ participantName(s.fromId) }}</span>
+                <i class="pi pi-arrow-right transfer-arrow" />
+                <span class="transfer-to">{{ participantName(s.toId) }}</span>
+                <div class="share-spacer" />
+                <span class="transfer-amount">{{ money(s.amount) }}</span>
+              </div>
+              <div v-if="paymentInfo(s.toId)" class="transfer-payment fs-muted">
+                <span v-if="paymentInfo(s.toId)!.sbpPhone">
+                  <i class="pi pi-phone" /> {{ paymentInfo(s.toId)!.sbpPhone }}
+                </span>
+                <span v-if="paymentInfo(s.toId)!.bank">
+                  <i class="pi pi-building" /> {{ paymentInfo(s.toId)!.bank }}
+                </span>
+                <span v-if="paymentInfo(s.toId)!.recipient">
+                  <i class="pi pi-user" /> {{ paymentInfo(s.toId)!.recipient }}
+                </span>
+              </div>
             </li>
           </ul>
         </section>
@@ -450,10 +474,24 @@ async function importEvent() {
   gap: 0.5rem;
 }
 
-.transfer-row {
+.transfer-head {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+.transfer-payment {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.85rem;
+  font-size: 0.85rem;
+}
+.transfer-payment i {
+  margin-right: 0.25rem;
+}
+.transfer-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
   padding: 0.7rem 0.85rem;
   border: 1px solid var(--p-content-border-color);
   border-radius: 0.6rem;

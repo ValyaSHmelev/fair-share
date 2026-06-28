@@ -67,6 +67,9 @@ function normalizeEvent(raw: FairEvent): FairEvent {
   if (Array.isArray(event.participants)) {
     for (const p of event.participants) {
       if (p.paidById === undefined) p.paidById = null
+      if (typeof p.sbpPhone !== 'string') p.sbpPhone = ''
+      if (typeof p.bank !== 'string') p.bank = ''
+      if (typeof p.recipient !== 'string') p.recipient = ''
     }
   } else {
     event.participants = []

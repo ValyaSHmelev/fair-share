@@ -168,6 +168,7 @@ export const useEventsStore = defineStore('events', () => {
     eventId: ID,
     name: string,
     paidById: ID | null = null,
+    payment: { sbpPhone?: string; bank?: string; recipient?: string } = {},
   ): Participant | undefined {
     const event = getEventById(eventId)
     if (!event) return undefined
@@ -176,10 +177,37 @@ export const useEventsStore = defineStore('events', () => {
       id: newId(),
       name: name.trim(),
       paidById: exists ? paidById : null,
+      sbpPhone: (payment.sbpPhone ?? '').trim(),
+      bank: (payment.bank ?? '').trim(),
+      recipient: (payment.recipient ?? '').trim(),
     }
     event.participants.push(participant)
     touch(event)
     return participant
+  }
+
+  /** Обновляет данные участника (имя, реквизиты, кто за него платит). */
+  function updateParticipant(
+    eventId: ID,
+    participantId: ID,
+    patch: Partial<Pick<Participant, 'name' | 'paidById' | 'sbpPhone' | 'bank' | 'recipient'>>,
+  ): void {
+    const event = getEventById(eventId)
+    const p = event?.participants.find((x) => x.id === participantId)
+    if (!event || !p) return
+    if (patch.name !== undefined) p.name = patch.name.trim()
+    if (patch.paidById !== undefined) {
+      // Нельзя ссылаться на самого себя или на несуществующего участника.
+      if (patch.paidById === participantId || !event.participants.some((x) => x.id === patch.paidById)) {
+        p.paidById = null
+      } else {
+        p.paidById = patch.paidById
+      }
+    }
+    if (patch.sbpPhone !== undefined) p.sbpPhone = patch.sbpPhone.trim()
+    if (patch.bank !== undefined) p.bank = patch.bank.trim()
+    if (patch.recipient !== undefined) p.recipient = patch.recipient.trim()
+    touch(event)
   }
 
   /** Назначает, кто платит за участника во взаиморасчётах. null — платит сам. */
@@ -332,6 +360,7 @@ export const useEventsStore = defineStore('events', () => {
     deleteEvent,
     duplicateEvent,
     addParticipant,
+    updateParticipant,
     setPaidBy,
     renameParticipant,
     removeParticipant,

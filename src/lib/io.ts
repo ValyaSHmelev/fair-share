@@ -94,6 +94,9 @@ export function parseImportFile(raw: string): ParsedImport {
     if (Array.isArray(ev.participants)) {
       for (const p of ev.participants) {
         if (p.paidById === undefined) p.paidById = null
+        if (typeof p.sbpPhone !== 'string') p.sbpPhone = ''
+        if (typeof p.bank !== 'string') p.bank = ''
+        if (typeof p.recipient !== 'string') p.recipient = ''
       }
     }
   }
